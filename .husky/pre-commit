@@ -26,6 +26,9 @@ fix_create_require() {
 for file in $STAGED; do
   [ -f "$file" ] || continue
 
+  # Skip generated/lock files
+  echo "$file" | grep -qE '\.(lock|lock\.json|lockb)$' && continue
+
   if awk 'length > 200 { found=1; exit } END { exit !found }' "$file"; then
     echo "⚠️  [long-line] $file — auto-fixing..."
     fix_long_lines "$file"
