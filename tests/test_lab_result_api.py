@@ -23,7 +23,7 @@ API = "/api/v1"
 PIPELINE_TASK = "app.tasks.pipeline.run_lab_result_pipeline"
 
 
-# ── Payload helpers ──────────────────────────────────────────────────────────�
+# ── Payload helpers ──────────────────────────────────────────────────────────
 
 def _lab_result_payload(case_id: str) -> dict:
     return {
