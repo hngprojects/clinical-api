@@ -5,7 +5,7 @@ import uuid
 # app/db/session.py calls get_settings() at module level when creating the engine,
 # so these need to be in os.environ before `from app.main import app` runs.
 # setdefault means they won't override values already set in the shell or .env.
-os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://clinsightlocal_user:clinsightLocal2026@localhost:5432/clinsight")
+os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/test")
 os.environ.setdefault("JWT_SECRET", "test-jwt-secret-min-32-characters-long-padding")
 os.environ.setdefault("OTP_PEPPER", "test-otp-pepper-min-32-characters-long-padding")
 
@@ -34,7 +34,7 @@ async def setup_database():
         await conn.run_sync(Base.metadata.drop_all)
 
 
-# ── HTTP client ───────────────────────────────────────────────────────────�
+# ── HTTP client ───────────────────────────────────────────────────────────
 
 @pytest.fixture
 async def client():
