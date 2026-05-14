@@ -14,6 +14,7 @@ from app.repositories.chat import ChatRepository
 from app.repositories.contact import ContactRepository
 from app.repositories.lab_result import LabResultRepository
 from app.repositories.medical_case import MedicalCaseRepository
+from app.repositories.medical_upload import MedicalUploadRepository
 from app.repositories.notification import NotificationRepository
 from app.repositories.otp import OtpRepository
 from app.repositories.password_reset import PasswordResetRepository
@@ -72,6 +73,10 @@ def get_contact_repo(session: DBSession) -> ContactRepository:
 	return ContactRepository(session)
 
 
+def get_medical_upload_repo(session: DBSession) -> MedicalUploadRepository:
+	return MedicalUploadRepository(session)
+
+
 # Annotated shortcuts
 UserRepo = Annotated[UserRepository, Depends(get_user_repo)]
 OtpRepo = Annotated[OtpRepository, Depends(get_otp_repo)]
@@ -84,6 +89,7 @@ ChatRepo = Annotated[ChatRepository, Depends(get_chat_repo)]
 NotificationRepo = Annotated[NotificationRepository, Depends(get_notification_repo)]
 WaitlistRepo = Annotated[WaitlistRepository, Depends(get_waitlist_repo)]
 ContactRepo = Annotated[ContactRepository, Depends(get_contact_repo)]
+MedicalUploadRepo = Annotated[MedicalUploadRepository, Depends(get_medical_upload_repo)]
 
 
 # Auth guard

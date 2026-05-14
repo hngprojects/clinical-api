@@ -59,6 +59,10 @@ class Settings(BaseSettings):
 
 	FRONTEND_URL: str = ""
 
+	BUCKET_NAME: str
+	SUPABASE_URL: str
+	SUPABASE_KEY: str
+
 	@field_validator("RESEND_FROM_EMAIL", mode="after")
 	@classmethod
 	def resend_from_email_required_when_resend_enabled(cls, v: str, info: object) -> str:
