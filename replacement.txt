@@ -1,0 +1,2 @@
+"postgresql+asyncpg://clinsightlocal_user:clinsightLocal2026@localhost:5432/clinsight"===>"postgresql+asyncpg://postgres:postgres@localhost:5432/test"
+# ── * ──────────────────────────────────────────────────────────===>

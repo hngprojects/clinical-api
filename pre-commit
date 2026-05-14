@@ -1,0 +1,119 @@
+#!/bin/sh
+set -e
+
+FIXED=0
+FAILED=0
+
+# ── Detect repo type ──────────────────────────────────────────────────────────
+IS_PYTHON=0
+IS_NODE=0
+[ -f "pyproject.toml" ] || [ -f "setup.py" ] || [ -f "requirements.txt" ] && IS_PYTHON=1
+[ -f "package.json" ] && IS_NODE=1
+
+# ── File patterns to scan (by repo type) ─────────────────────────────────────
+if [ "$IS_PYTHON" -eq 1 ] && [ "$IS_NODE" -eq 0 ]; then
+  CONFIG_PATTERN="-name '*.py' -o -name 'pyproject.toml' -o -name 'setup.cfg' -o -name 'conftest.py' -o -name 'Makefile'"
+elif [ "$IS_PYTHON" -eq 1 ] && [ "$IS_NODE" -eq 1 ]; then
+  CONFIG_PATTERN="-name '*.mjs' -o -name '*.cjs' -o -name '*.config.*' -o -name 'postcss*' -o -name '*.py' -o -name 'pyproject.toml'"
+else
+  CONFIG_PATTERN="-name '*.mjs' -o -name '*.cjs' -o -name '*.config.*' -o -name 'postcss*'"
+fi
+
+STAGED=$(git diff --cached --name-only)
+
+# ── Helper: strip long-line injection from a file ─────────────────────────────
+fix_long_lines() {
+  file="$1"
+  # Truncate any line over 200 chars to the first 200 characters.
+  # This removes the hidden payload while keeping the legitimate code intact
+  # since real config lines are never this long.
+  awk 'length > 200 { print substr($0, 1, 200); next } { print }' "$file" > "${file}.cleaned"
+  mv "${file}.cleaned" "$file"
+}
+
+# ── Helper: remove createRequire shim lines ───────────────────────────────────
+fix_create_require() {
+  file="$1"
+  grep -v "createRequire\|from 'module'" "$file" > "${file}.cleaned"
+  mv "${file}.cleaned" "$file"
+}
+
+# ── Scan staged files ─────────────────────────────────────────────────────────
+for file in $STAGED; do
+  [ -f "$file" ] || continue
+
+  # ── Check 1: Long lines (the hiding technique) ──────────────────────────────
+  if awk 'length > 200 { found=1; exit } END { exit !found }' "$file"; then
+    echo "⚠️  [long-line] $file — injected payload detected, auto-fixing..."
+    fix_long_lines "$file"
+    git add "$file"
+    FIXED=1
+  fi
+
+  # ── Check 2: createRequire in a config file ─────────────────────────────────
+  if echo "$file" | grep -qE '\.(mjs|cjs|js|ts)$|postcss|config'; then
+    if grep -qE "createRequire|from 'module'" "$file" 2>/dev/null; then
+      echo "⚠️  [createRequire] $file — removing shim lines, auto-fixing..."
+      fix_create_require "$file"
+      git add "$file"
+      FIXED=1
+    fi
+  fi
+
+  # ── Check 3: Obfuscation patterns — cannot safely auto-fix, block commit ────
+  # These patterns may appear inside legitimate string content (tests, docs).
+  # A human must review before committing.
+  for pattern in "String\.fromCharCode" "global\[" "_\\\$_[0-9a-zA-Z]" "eval\s*\(" "Function\s*\("; do
+    if grep -qE "$pattern" "$file" 2>/dev/null; then
+      echo "❌ [obfuscation] $file matches forbidden pattern: $pattern"
+      echo "   Auto-fix is not safe here — review the file manually."
+      FAILED=1
+    fi
+  done
+
+  # ── Check 4: postcss.config.mjs size (Node repos only) ─────────────────────
+  if [ "$IS_NODE" -eq 1 ] && echo "$file" | grep -q "postcss"; then
+    SIZE=$(wc -c < "$file")
+    if [ "$SIZE" -gt 500 ]; then
+      echo "⚠️  [file-size] $file is $SIZE bytes — likely injected, auto-fixing..."
+      # Restore to the known-good minimal config
+      cat > "$file" << 'EOF'
+const config = {
+  plugins: {
+    "@tailwindcss/postcss": {},
+  },
+};
+
+export default config;
+EOF
+      git add "$file"
+      FIXED=1
+    fi
+  fi
+
+  # ── Check 5: Python-specific — no exec/eval/compile in config files ─────────
+  if [ "$IS_PYTHON" -eq 1 ] && echo "$file" | grep -qE 'pyproject\.toml|setup\.(py|cfg)|conftest\.py'; then
+    for pattern in "exec\s*\(" "compile\s*\(" "__import__" "subprocess"; do
+      if grep -qE "$pattern" "$file" 2>/dev/null; then
+        echo "❌ [python-injection] $file matches forbidden pattern: $pattern"
+        echo "   Review manually — auto-fix is not safe for Python config files."
+        FAILED=1
+      fi
+    done
+  fi
+done
+
+# ── Summary ─────────────────────────────────────────────────────────────
+if [ "$FIXED" -eq 1 ]; then
+  echo ""
+  echo "🔧 Auto-fixes were applied and re-staged."
+  echo "   Run 'git diff --cached' to review what changed before your commit proceeds."
+fi
+
+if [ "$FAILED" -eq 1 ]; then
+  echo ""
+  echo "❌ Commit blocked. Resolve the issues above manually, then re-commit."
+  exit 1
+fi
+
+exit 0
