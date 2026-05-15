@@ -59,6 +59,14 @@ class Settings(BaseSettings):
 
 	FRONTEND_URL: str = ""
 
+	# Storage
+	STORAGE_PROVIDER: str = "local"  # "local" | "s3"
+	AWS_ACCESS_KEY_ID: str = ""
+	AWS_SECRET_ACCESS_KEY: str = ""
+	AWS_S3_BUCKET: str = ""
+	AWS_S3_REGION: str = "us-east-1"
+	STORAGE_BASE_URL: str = ""  # public URL prefix for stored files
+
 	@field_validator("RESEND_FROM_EMAIL", mode="after")
 	@classmethod
 	def resend_from_email_required_when_resend_enabled(cls, v: str, info: object) -> str:

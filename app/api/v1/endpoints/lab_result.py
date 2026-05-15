@@ -4,43 +4,15 @@ from fastapi import APIRouter, Query, status
 
 from app.api.deps import CurrentUser, GuestSessionId, LabResultRepo, MedicalCaseRepo, OptionalUser
 from app.core.responses import SuccessResponse
-from app.schemas.lab_result import LabResultCreate, LabResultResponse, UploadRequest, UploadResponse
+from app.schemas.lab_result import LabResultCreate, LabResultResponse
 from app.services.lab_result import (
 	create_lab_result,
 	get_lab_result,
 	list_lab_results_for_case,
-	upload_lab_result,
 )
 from app.services.medical_case import get_case
 
 router = APIRouter(tags=["lab-results"])
-
-
-@router.post(
-	"/upload",
-	response_model=SuccessResponse[UploadResponse],
-	status_code=status.HTTP_201_CREATED,
-)
-async def upload(
-	payload: UploadRequest,
-	lab_repo: LabResultRepo,
-	case_repo: MedicalCaseRepo,
-) -> SuccessResponse[UploadResponse]:
-	"""Upload a lab result file.
-
-	Creates a MedicalCase and a LabResult in one action, then triggers
-	the OCR → AI pipeline. This is the primary upload path — the frontend
-	sends one request and polls GET /cases/{case_id}/interpretations/latest
-	for the result.
-	"""
-	case, lab_result = await upload_lab_result(lab_repo, case_repo, payload, None)
-	return SuccessResponse(
-		message="Upload received. Processing started.",
-		data=UploadResponse(
-			case_id=case.id,
-			lab_result=LabResultResponse.model_validate(lab_result),
-		),
-	)
 
 
 @router.post(

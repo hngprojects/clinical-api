@@ -24,6 +24,8 @@ dependencies = [
     "urllib3>=2.7.0",
     "bandit>=1.9.4",
     "python-decouple>=3.8",
+    "python-multipart>=0.0.28",
+    "boto3>=1.43.8",
 ]
 
 [dependency-groups]
