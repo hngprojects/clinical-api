@@ -1,6 +1,5 @@
 from datetime import datetime
 from io import BytesIO
-from uuid import UUID
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -119,9 +118,7 @@ def generate_pdf(
 	story = []
 
 	# ── Header ──────────────────────────────────────────────────────────────
-	patient_name = (
-		f"{user.first_name} {user.last_name}".strip() if user else "Guest"
-	)
+	patient_name = f"{user.first_name} {user.last_name}".strip() if user else "Guest"
 	upload_date = (
 		interpretation.generated_at.strftime("%B %d, %Y at %H:%M UTC")
 		if interpretation.generated_at
@@ -144,19 +141,21 @@ def generate_pdf(
 	]
 	info_table = Table(info_data, colWidths=[50 * mm, 120 * mm])
 	info_table.setStyle(
-		TableStyle([
-			("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
-			("FONTSIZE", (0, 0), (-1, -1), 10),
-			("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-			("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#1F4E79")),
-			("TEXTCOLOR", (1, 0), (1, -1), colors.HexColor("#333333")),
-			("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.HexColor("#F5F8FC"), colors.white]),
-			("TOPPADDING", (0, 0), (-1, -1), 6),
-			("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-			("LEFTPADDING", (0, 0), (-1, -1), 8),
-			("RIGHTPADDING", (0, 0), (-1, -1), 8),
-			("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#DDDDDD")),
-		])
+		TableStyle(
+			[
+				("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
+				("FONTSIZE", (0, 0), (-1, -1), 10),
+				("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+				("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#1F4E79")),
+				("TEXTCOLOR", (1, 0), (1, -1), colors.HexColor("#333333")),
+				("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.HexColor("#F5F8FC"), colors.white]),
+				("TOPPADDING", (0, 0), (-1, -1), 6),
+				("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+				("LEFTPADDING", (0, 0), (-1, -1), 8),
+				("RIGHTPADDING", (0, 0), (-1, -1), 8),
+				("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#DDDDDD")),
+			]
+		)
 	)
 	story.append(info_table)
 	story.append(Spacer(1, 4 * mm))
@@ -174,12 +173,14 @@ def generate_pdf(
 		headers = ["Metric", "Value", "Unit", "Status"]
 		rows = [headers]
 		for item in interpretation.value_breakdown:
-			rows.append([
-				item.metric or "",
-				str(item.value) if item.value is not None else "",
-				item.unit or "",
-				(item.status or "").upper(),
-			])
+			rows.append(
+				[
+					item.metric or "",
+					str(item.value) if item.value is not None else "",
+					item.unit or "",
+					(item.status or "").upper(),
+				]
+			)
 
 		col_widths = [60 * mm, 30 * mm, 30 * mm, 35 * mm]
 		breakdown_table = Table(rows, colWidths=col_widths)
