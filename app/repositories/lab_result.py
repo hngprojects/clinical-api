@@ -9,6 +9,19 @@ from app.repositories.base import BaseRepository
 class LabResultRepository(BaseRepository[LabResult]):
 	model = LabResult
 
+	async def get_latest_with_extracted_values(self, medical_case_id: UUID) -> LabResult | None:
+		result = await self._session.execute(
+			select(LabResult)
+			.where(
+				LabResult.medical_case_id == medical_case_id,
+				LabResult.extracted_values.isnot(None),
+				LabResult.ocr_status == OCRStatus.COMPLETE,
+			)
+			.order_by(LabResult.created_at.desc())
+			.limit(1)
+		)
+		return result.scalar_one_or_none()
+
 	async def list_by_case(
 		self,
 		medical_case_id: UUID,
