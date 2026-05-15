@@ -7,7 +7,6 @@ from app.services.auth.account import (
 	start_email_change,
 	verify_email_change,
 )
-from app.services.auth.email import send_otp_email, send_password_reset_email
 from app.services.auth.otp import (
 	create_otp_for_user,
 	verify_otp_for_user,
@@ -36,8 +35,6 @@ __all__ = [
 	"otp_ttl_seconds",
 	"create_otp_for_user",
 	"verify_otp_for_user",
-	"send_otp_email",
-	"send_password_reset_email",
 	"create_password_reset",
 	"reset_password",
 	"delete_password_reset_by_raw_token",
