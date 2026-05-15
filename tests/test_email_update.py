@@ -96,7 +96,7 @@ async def test_request_email_update_wrong_password_returns_400(client) -> None:
         with patch("app.api.v1.endpoints.users.send_otp_email_task.delay") as mock_delay:
             response = await client.post(
                 f"{API}/users/me/email",
-                json={"email": f"new_{uuid.uuid4().hex[:8]}`@clinsights.dev`", "password": "wrong-password"},
+                json={"email": f"new_{uuid.uuid4().hex[:8]}@clinsights.dev", "password": "wrong-password"},
                 headers=_auth_headers(user.id),
             )
 
