@@ -10,7 +10,7 @@ from app.repositories.chat import ChatRepository
 from app.repositories.lab_result import LabResultRepository
 from app.repositories.medical_case import MedicalCaseRepository
 from app.schemas.chat import ChatAsk
-from app.services.ai import ChatError, MEDICAL_DISCLAIMER, generate_chat_response
+from app.services.ai import MEDICAL_DISCLAIMER, ChatError, generate_chat_response
 from app.services.chat_context import build_case_context, chats_to_messages
 from app.services.chat_tokens import truncate_history
 

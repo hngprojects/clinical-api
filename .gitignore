@@ -177,3 +177,21 @@ jeff.py
 
 .vscode
 public/
+
+docker-compose.yml
+.env
+.env.example
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.staging.local
+.env.production
+.env.staging
+.env.development
+.env.test
+.env.production.local
+.env.staging.local
+.env.development.local
+
+README.md

@@ -142,7 +142,7 @@ clinsights-be/
 
 - Python 3.12+
 - [uv](https://docs.astral.sh/uv/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
-- A running Postgres instance (local, Docker, or Supabase)
+- [Docker](https://docs.docker.com/get-docker/) (recommended) or a local Postgres + Redis instance
 
 ### 2. Install
 
@@ -165,25 +165,33 @@ JWT_ALGORITHM=HS256
 OTP_PEPPER=<generate: python3 -c "import secrets; print(secrets.token_urlsafe(64))">
 ```
 
-### 4. Database Setup
+### 4. Start Postgres and Redis (Docker)
 
-Ensure your local PostgreSQL database is created (`clinsights`) and the proper roles exist. Open your `psql` terminal and execute:
-
-```sql
-ALTER SCHEMA public OWNER TO postgres;
-GRANT ALL ON SCHEMA public TO postgres;
-GRANT CREATE ON SCHEMA public TO postgres;
-GRANT USAGE ON SCHEMA public TO postgres;
-GRANT ALL PRIVILEGES ON DATABASE clinsights TO postgres;
+```bash
+docker compose up -d
 ```
 
-Then run migrations:
+This starts:
+
+- **postgres** — port `5432`, database `clinsights` (from `.env`)
+- **redis** — port `6379` (Celery broker for the lab pipeline and email tasks)
+- **test** database — created automatically for `uv run pytest`
+
+Check health: `docker compose ps`
+
+To reset data: `docker compose down -v` (deletes volumes).
+
+### 5. Database Setup
+
+Run migrations:
 
 ```bash
 uv run alembic upgrade head
 ```
 
-### 5. Start the dev server
+If you are not using Docker, create the `clinsights` database manually and ensure Redis is reachable at `CELERY_BROKER_URL`.
+
+### 6. Start the dev server
 
 ```bash
 uv run fastapi dev app/main.py
@@ -198,6 +206,17 @@ uv run uvicorn app.main:app --reload
 - Root API → `http://127.0.0.1:8000`
 - Swagger UI → `http://127.0.0.1:8000/docs`
 - ReDoc → `http://127.0.0.1:8000/redoc`
+
+### 7. Start the Celery worker (lab pipeline + email)
+
+Required for lab upload → OCR → interpretation. In a second terminal:
+
+```bash
+uv run celery -A app.core.celery_app.celery_app worker \
+  -E --queues=default,email,pipeline --loglevel=info
+```
+
+Set `OPENAI_API_KEY` or `GEMINI_API_KEY` in `.env` for interpretation and chat.
 
 ---
 
