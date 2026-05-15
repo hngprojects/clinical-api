@@ -1,5 +1,6 @@
-from fastapi import APIRouter, status
 import logging
+
+from fastapi import APIRouter, status
 
 from app.api.deps import WaitlistRepo
 from app.core.responses import SuccessResponse

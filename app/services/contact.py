@@ -27,7 +27,7 @@ async def submit_contact_message(
 			full_name=payload.full_name,
 			to_email=str(payload.email),
 			message=payload.message,
-		)																																
+		)
 	except Exception as e:
 		logging.error("Contact email failed with error => ", e)
 		pass

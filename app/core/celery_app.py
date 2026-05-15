@@ -18,6 +18,7 @@ celery_app.conf.update(
 	include=["app.tasks.emails", "app.tasks.pipeline"],
 )
 
+
 def configure_celery(**kwargs: object) -> None:  # noqa: ARG001
 	"""Configure broker and result backend from settings.
 

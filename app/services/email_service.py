@@ -1,7 +1,7 @@
-from enum import Enum
 import logging
-from pathlib import Path
 import threading
+from enum import Enum
+from pathlib import Path
 from typing import Callable, NamedTuple, Tuple
 from urllib.parse import urlparse
 
@@ -130,7 +130,7 @@ async def send_email(email_type: EMAIL_TYPE, to: str, context: dict) -> SuccessR
 		result = await send_with_fallback(subject=subject, html=html, to=to)
 		logger.info("Email sent to %s via %s", to, result.get("provider"))
 		return SuccessResponse(message="Email queued", data={"provider": result.get("provider")})
-	except EmailError as exc:
+	except EmailError:
 		logger.exception("Failed to send email to %s", to)
 		raise
 
