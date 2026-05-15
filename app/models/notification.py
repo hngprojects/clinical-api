@@ -31,7 +31,7 @@ class Notification(Base):
 		UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
 	)
 	medical_case_id: Mapped[uuid.UUID | None] = mapped_column(
-		UUID(as_uuid=True), ForeignKey("medical_cases.id", ondelete="SET NULL"), nullable=True, index=True
+		UUID(as_uuid=True), ForeignKey("medical_cases.id", ondelete="CASCADE"), nullable=True, index=True
 	)
 	type: Mapped[NotificationType] = mapped_column(
 		Enum(NotificationType, values_callable=lambda obj: [e.value for e in obj]), nullable=False
