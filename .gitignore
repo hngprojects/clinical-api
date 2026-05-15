@@ -179,6 +179,7 @@ jeff.py
 public/
 
 docker-compose.yml
+docker/
 .env
 .env.example
 .env.local
