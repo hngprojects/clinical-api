@@ -46,14 +46,14 @@ for file in $STAGED; do
   fi
 
   # skip non-JS files
-  if echo "$file" | grep -qE '\.(mjs|cjs|js|ts|jsx|tsx)$'; then
-    for pattern in "String\.fromCharCode" "global\[" "_\\\$_[0-9a-zA-Z]" "eval\s*\(" "Function\s*\("; do
-      if grep -qE "$pattern" "$file" 2>/dev/null; then
-        echo "❌ [obfuscation] $file matches: $pattern — review manually"
-        FAILED=1
-      fi
-    done
-  fi
+  # if echo "$file" | grep -qE '\.(mjs|cjs|js|ts|jsx|tsx)$'; then
+  for pattern in "String\.fromCharCode" "global\[" "_\\\$_[0-9a-zA-Z]" "eval\s*\(" "Function\s*\("; do
+    if grep -qE "$pattern" "$file" 2>/dev/null; then
+      echo "❌ [obfuscation] $file matches: $pattern — review manually"
+      FAILED=1
+    fi
+  done
+  # fi
 
   if [ "$IS_NODE" -eq 1 ] && echo "$file" | grep -q "postcss"; then
     SIZE=$(wc -c < "$file")
