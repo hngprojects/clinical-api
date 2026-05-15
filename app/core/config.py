@@ -40,6 +40,16 @@ class Settings(BaseSettings):
 	RESEND_API_KEY: str | None = None
 	RESEND_FROM_EMAIL: str = ""
 	RESEND_FROM_NAME: str = "Clinsights"
+ 
+	# SMTP (fallback email provider)
+	SMTP_HOST: str = ""
+	SMTP_PORT: str = ""
+	SMTP_USERNAME: str | None = None
+	SMTP_PASSWORD: str | None = None
+	SMTP_FROM_EMAIL: str = ""
+	SMTP_FROM_NAME: str = "Clinsights"
+	SMTP_USE_TLS: bool = True
+ 
 	COOKIE_SECURE: bool = False
 	COOKIE_SAMESITE: str = "strict"
 	ALLOW_STDOUT_EMAIL: bool = False
