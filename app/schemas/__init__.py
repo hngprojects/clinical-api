@@ -15,7 +15,7 @@ from app.schemas.auth import (
 	TokenResponse,
 	VerifyOtpRequest,
 )
-from app.schemas.chat import ChatBase, ChatCreate, ChatResponse
+from app.schemas.chat import ChatAsk, ChatBase, ChatCreate, ChatExchangeResponse, ChatResponse
 from app.schemas.lab_result import LabResultBase, LabResultCreate, LabResultResponse, LabResultUpdate
 from app.schemas.medical_case import MedicalCaseBase, MedicalCaseCreate, MedicalCaseResponse, MedicalCaseUpdate
 from app.schemas.notification import NotificationBase, NotificationCreate, NotificationResponse, NotificationUpdate
@@ -55,8 +55,10 @@ __all__ = [
 	"AIInterpretationUpdate",
 	"AIInterpretationResponse",
 	# Chat
+	"ChatAsk",
 	"ChatBase",
 	"ChatCreate",
+	"ChatExchangeResponse",
 	"ChatResponse",
 	# Notification
 	"NotificationBase",

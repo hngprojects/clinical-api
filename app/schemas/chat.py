@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.chat import SenderType
 
@@ -20,6 +20,12 @@ class ChatCreate(ChatBase):
 	user_id: uuid.UUID | None = None
 
 
+class ChatAsk(BaseModel):
+	"""Request schema for asking a follow-up question in a case chat."""
+
+	text: str = Field(..., min_length=1)
+
+
 class ChatResponse(ChatBase):
 	"""Response schema for chat messages, includes all fields from the database model."""
 
@@ -28,3 +34,10 @@ class ChatResponse(ChatBase):
 	sent_at: datetime
 
 	model_config = ConfigDict(from_attributes=True)
+
+
+class ChatExchangeResponse(BaseModel):
+	"""Response containing the user message and the AI reply."""
+
+	user_message: ChatResponse
+	ai_message: ChatResponse
