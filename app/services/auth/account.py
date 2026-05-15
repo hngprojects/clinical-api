@@ -140,12 +140,20 @@ async def authenticate_otp(
 
 	# Migrate guest cases to this user account if a guest session was provided
 	if guest_session_id:
+		from app.repositories.guest_session import GuestSessionRepository
 		from app.repositories.medical_case import MedicalCaseRepository
-		from app.services.guest import migrate_guest_cases
+		from app.services.guest import migrate_guest_cases, validate_guest_session
 
-		medical_case_repo = MedicalCaseRepository(user_repo._session)
-		await migrate_guest_cases(guest_session_id, user.id, medical_case_repo)
-		await user_repo.commit()
+		guest_repo = GuestSessionRepository(user_repo._session)
+		try:
+			await validate_guest_session(guest_repo, guest_session_id)
+			medical_case_repo = MedicalCaseRepository(user_repo._session)
+			await migrate_guest_cases(guest_session_id, user.id, medical_case_repo)
+		except NotFoundError:
+			pass  # expired or invalid session — skip migration silently
+
+	await user_repo.commit()
+	await user_repo.refresh(user)
 
 	token, ttl_seconds = create_access_token(user.id)
 	refresh_token = await create_refresh_token(user.id)
