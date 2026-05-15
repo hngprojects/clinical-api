@@ -93,14 +93,16 @@ async def test_request_email_update_success(client) -> None:
 async def test_request_email_update_wrong_password_returns_400(client) -> None:
     user = await _create_user(email=f"current_{uuid.uuid4().hex[:8]}@clinsights.dev")
     try:
-        response = await client.post(
-            f"{API}/users/me/email",
-            json={"email": f"new_{uuid.uuid4().hex[:8]}@clinsights.dev", "password": "wrong-password"},
-            headers=_auth_headers(user.id),
-        )
+        with patch("app.api.v1.endpoints.users.send_otp_email_task.delay") as mock_delay:
+            response = await client.post(
+                f"{API}/users/me/email",
+                json={"email": f"new_{uuid.uuid4().hex[:8]}`@clinsights.dev`", "password": "wrong-password"},
+                headers=_auth_headers(user.id),
+            )
 
         assert response.status_code == 400
         assert response.json()["message"] == "Incorrect password"
+        mock_delay.assert_not_called()
     finally:
         await _delete_user(user.id)
 
@@ -109,14 +111,16 @@ async def test_request_email_update_conflict_when_email_taken(client) -> None:
     user = await _create_user(email=f"current_{uuid.uuid4().hex[:8]}@clinsights.dev")
     existing = await _create_user(email=f"taken_{uuid.uuid4().hex[:8]}@clinsights.dev")
     try:
-        response = await client.post(
-            f"{API}/users/me/email",
-            json={"email": existing.email, "password": "Password123!"},
-            headers=_auth_headers(user.id),
-        )
+        with patch("app.api.v1.endpoints.users.send_otp_email_task.delay") as mock_delay:
+            response = await client.post(
+                f"{API}/users/me/email",
+                json={"email": existing.email, "password": "Password123!"},
+                headers=_auth_headers(user.id),
+            )
 
         assert response.status_code == 409
         assert response.json()["message"] == "Email already in use"
+        mock_delay.assert_not_called()
     finally:
         await _delete_user(user.id)
         await _delete_user(existing.id)
