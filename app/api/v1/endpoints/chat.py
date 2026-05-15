@@ -2,9 +2,16 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query, status
 
-from app.api.deps import ChatRepo, GuestSessionId, MedicalCaseRepo, OptionalUser
+from app.api.deps import (
+	AIInterpretationRepo,
+	ChatRepo,
+	GuestSessionId,
+	LabResultRepo,
+	MedicalCaseRepo,
+	OptionalUser,
+)
 from app.core.responses import SuccessResponse
-from app.schemas.chat import ChatCreate, ChatResponse
+from app.schemas.chat import ChatAsk, ChatExchangeResponse, ChatResponse
 from app.services.chat import list_messages_for_case, send_message
 from app.services.medical_case import get_case
 
@@ -13,23 +20,36 @@ router = APIRouter(prefix="/cases/{case_id}/chat", tags=["chat"])
 
 @router.post(
 	"",
-	response_model=SuccessResponse[ChatResponse],
+	response_model=SuccessResponse[ChatExchangeResponse],
 	status_code=status.HTTP_201_CREATED,
 )
 async def create_message(
 	case_id: UUID,
-	payload: ChatCreate,
+	payload: ChatAsk,
 	current_user: OptionalUser,
 	guest_session_id: GuestSessionId,
 	chat_repo: ChatRepo,
 	case_repo: MedicalCaseRepo,
-) -> SuccessResponse[ChatResponse]:
-	"""Send a chat message in a medical case."""
-	payload.medical_case_id = case_id
-	msg = await send_message(chat_repo, case_repo, payload, user=current_user, guest_session_id=guest_session_id)
+	lab_repo: LabResultRepo,
+	interp_repo: AIInterpretationRepo,
+) -> SuccessResponse[ChatExchangeResponse]:
+	"""Send a chat message and receive an AI reply."""
+	user_message, ai_message = await send_message(
+		chat_repo,
+		case_repo,
+		lab_repo,
+		interp_repo,
+		case_id,
+		payload,
+		user=current_user,
+		guest_session_id=guest_session_id,
+	)
 	return SuccessResponse(
 		message="Message sent.",
-		data=ChatResponse.model_validate(msg),
+		data=ChatExchangeResponse(
+			user_message=ChatResponse.model_validate(user_message),
+			ai_message=ChatResponse.model_validate(ai_message),
+		),
 	)
 
 
