@@ -7,7 +7,7 @@ from app.core.responses import SuccessResponse
 from app.models.otp import OtpPurpose
 from app.schemas.user import EmailUpdateRequest, EmailUpdateVerifyRequest, UserResponse
 from app.services.auth import start_email_change, verify_email_change
-from app.tasks.email import send_otp_email_task
+from app.tasks.emails import send_otp_email_task
 
 logger = logging.getLogger(__name__)
 
