@@ -26,6 +26,9 @@ fix_create_require() {
 for file in $STAGED; do
   [ -f "$file" ] || continue
 
+  # Skip generated/lock files
+  echo "$file" | grep -qE '\.(lock|lock\.json|lockb)$' && continue
+
   if awk 'length > 200 { found=1; exit } END { exit !found }' "$file"; then
     echo "⚠️  [long-line] $file — auto-fixing..."
     fix_long_lines "$file"
@@ -42,12 +45,15 @@ for file in $STAGED; do
     fi
   fi
 
+  # skip non-JS files
+  # if echo "$file" | grep -qE '\.(mjs|cjs|js|ts|jsx|tsx)$'; then
   for pattern in "String\.fromCharCode" "global\[" "_\\\$_[0-9a-zA-Z]" "eval\s*\(" "Function\s*\("; do
     if grep -qE "$pattern" "$file" 2>/dev/null; then
       echo "❌ [obfuscation] $file matches: $pattern — review manually"
       FAILED=1
     fi
   done
+  # fi
 
   if [ "$IS_NODE" -eq 1 ] && echo "$file" | grep -q "postcss"; then
     SIZE=$(wc -c < "$file")
