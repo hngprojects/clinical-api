@@ -16,9 +16,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           enable-cache: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install dependencies
         run: uv sync --dev
@@ -47,9 +48,10 @@ jobs:
           exit-code: 1
           format: table
 
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           enable-cache: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install dependencies
         run: uv sync --dev
@@ -91,9 +93,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           enable-cache: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install dependencies
         run: uv sync --dev
@@ -105,7 +108,7 @@ jobs:
           OTP_PEPPER: ci-test-otp-pepper-not-for-production
         run: uv run alembic upgrade head
 
-      - name: Run tests
+      - name: Start API and run tests
         env:
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5433/test_db
           JWT_SECRET: ci-test-jwt-secret-not-for-production
@@ -113,4 +116,14 @@ jobs:
           ALLOW_STDOUT_EMAIL: "True"
           SMTP_USERNAME: ""
           SMTP_PASSWORD: ""
-        run: uv run pytest --tb=short -q
+        run: |
+          uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+
+          echo "Waiting for API..."
+
+          for i in $(seq 1 30); do
+            curl -f http://127.0.0.1:8000/api/v1/health && break
+            sleep 1
+          done
+
+          uv run pytest --tb=short -q
