@@ -125,8 +125,7 @@ class InterpretationError(Exception):
 
 
 MEDICAL_DISCLAIMER = (
-	"This is not a medical diagnosis. Please consult a qualified healthcare "
-	"professional for personalised advice."
+	"This is not a medical diagnosis. Please consult a qualified healthcare professional for personalised advice."
 )
 
 _CHAT_SYSTEM_PROMPT = f"""\
