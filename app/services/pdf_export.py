@@ -33,7 +33,7 @@ STATUS_COLORS = {
 
 RISK_COLORS = {
 	RiskLevel.LOW: colors.HexColor("#1a7a4a"),
-	RiskLevel.MEDIUM: colors.HexColor("#b45309"),
+	RiskLevel.MODERATE: colors.HexColor("#b45309"),
 	RiskLevel.HIGH: colors.HexColor("#b91c1c"),
 }
 
