@@ -10,14 +10,13 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-pytestmark = pytest.mark.asyncio(loop_scope="session")
-
 from app.db.session import AsyncSessionLocal
 from app.models.ai_interpretation import AIInterpretation, InterpretationStatus, RiskLevel
 from app.models.lab_result import LabResult, OCRStatus
 from app.models.medical_case import MedicalCase, MedicalCaseStatus
 from app.models.user import User
-from app.services.auth.tokens import create_access_token
+
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 API = "/api/v1"
 
@@ -99,18 +98,21 @@ async def test_send_message_returns_user_and_ai_reply(mock_generate, client, tes
 async def test_chat_maintains_history_across_messages(mock_generate, client, test_user, auth_headers):
 	case_id = await _seed_ready_case(test_user)
 
-	await client.post(
+	first = await client.post(
 		f"{API}/cases/{case_id}/chat",
 		json={"text": "First question"},
 		headers=auth_headers,
 	)
-	await client.post(
+	assert first.status_code == 201
+	second = await client.post(
 		f"{API}/cases/{case_id}/chat",
 		json={"text": "Second question"},
 		headers=auth_headers,
 	)
+	assert second.status_code == 201
 
 	list_resp = await client.get(f"{API}/cases/{case_id}/chat", headers=auth_headers)
+	assert list_resp.status_code == 200
 	messages = list_resp.json()["data"]
 	assert len(messages) == 4
 	assert messages[0]["content"]["text"] == "First question"
@@ -120,6 +122,7 @@ async def test_chat_maintains_history_across_messages(mock_generate, client, tes
 
 async def test_chat_before_lab_ready_returns_409(client, test_user, auth_headers):
 	case_resp = await client.post(f"{API}/cases", headers=auth_headers)
+	assert case_resp.status_code == 201
 	case_id = case_resp.json()["data"]["id"]
 
 	response = await client.post(
@@ -137,6 +140,18 @@ async def test_chat_empty_text_returns_422(client, test_user, auth_headers):
 	response = await client.post(
 		f"{API}/cases/{case_id}/chat",
 		json={"text": ""},
+		headers=auth_headers,
+	)
+
+	assert response.status_code == 422
+
+
+async def test_chat_whitespace_only_text_returns_422(client, test_user, auth_headers):
+	case_id = await _seed_ready_case(test_user)
+
+	response = await client.post(
+		f"{API}/cases/{case_id}/chat",
+		json={"text": "   \t\n  "},
 		headers=auth_headers,
 	)
 

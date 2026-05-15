@@ -5,12 +5,19 @@ def test_estimate_tokens_empty():
 	assert estimate_tokens("") == 0
 
 
+def _history_token_total(messages: list[dict[str, str]]) -> int:
+	return sum(estimate_tokens(m.get("content", "")) + 4 for m in messages)
+
+
 def test_truncate_history_preserves_case_context_budget():
 	case_context = "LAB RESULTS:\n- Haemoglobin: 11.2 g/dL"
 	messages = [{"role": "user", "content": "x" * 4000} for _ in range(20)]
 	truncated = truncate_history(case_context, messages, max_tokens=MAX_CONTEXT_TOKENS)
 	assert len(truncated) < len(messages)
 	assert truncated[-1] == messages[-1]
+
+	case_tokens = estimate_tokens(case_context)
+	assert case_tokens + _history_token_total(truncated) <= MAX_CONTEXT_TOKENS
 
 
 def test_truncate_history_drops_oldest_first():
@@ -20,3 +27,4 @@ def test_truncate_history_drops_oldest_first():
 	assert truncated
 	assert len(truncated) < len(messages)
 	assert truncated[-1] == messages[-1]
+	assert truncated == messages[-len(truncated) :]

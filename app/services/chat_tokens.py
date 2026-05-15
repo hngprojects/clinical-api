@@ -29,12 +29,14 @@ def truncate_history(
 		return []
 
 	kept: list[dict[str, str]] = []
+	used_tokens = 0
 	for message in reversed(messages):
 		content = message.get("content", "")
 		msg_tokens = estimate_tokens(content) + 4  # role overhead
-		if kept and sum(estimate_tokens(m.get("content", "")) + 4 for m in kept) + msg_tokens > remaining:
+		if used_tokens + msg_tokens > remaining:
 			break
 		kept.append(message)
+		used_tokens += msg_tokens
 
 	kept.reverse()
 	return kept

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from app.models.chat import SenderType
 
@@ -23,7 +23,15 @@ class ChatCreate(ChatBase):
 class ChatAsk(BaseModel):
 	"""Request schema for asking a follow-up question in a case chat."""
 
-	text: str = Field(..., min_length=1)
+	text: str
+
+	@field_validator("text")
+	@classmethod
+	def strip_and_require_non_empty(cls, value: str) -> str:
+		stripped = value.strip()
+		if not stripped:
+			raise ValueError("Message text cannot be empty or whitespace-only.")
+		return stripped
 
 
 class ChatResponse(ChatBase):
