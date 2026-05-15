@@ -195,4 +195,3 @@ docker/
 .env.staging.local
 .env.development.local
 
-README.md
