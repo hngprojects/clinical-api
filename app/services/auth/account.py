@@ -135,9 +135,6 @@ async def authenticate_otp(
 	user.is_email_verified = True
 	user.last_login_at = now
 
-	await user_repo.commit()
-	await user_repo.refresh(user)
-
 	# Migrate guest cases to this user account if a guest session was provided
 	if guest_session_id:
 		from app.repositories.guest_session import GuestSessionRepository
