@@ -8,6 +8,7 @@ from app.schemas.medical_case import MedicalCaseResponse
 from app.services.medical_case import (
 	complete_case,
 	create_case_for_user,
+	delete_owned_case,
 	get_case,
 	list_cases_for_user,
 )
@@ -71,6 +72,19 @@ async def retrieve(
 		message="OK",
 		data=MedicalCaseResponse.model_validate(case),
 	)
+
+
+@router.delete(
+	"/{case_id}",
+	status_code=status.HTTP_204_NO_CONTENT,
+)
+async def destroy(
+	case_id: UUID,
+	current_user: CurrentUser,
+	case_repo: MedicalCaseRepo,
+) -> None:
+	"""Delete a medical case owned by the authenticated user."""
+	await delete_owned_case(case_repo, case_id, user=current_user)
 
 
 @router.post(

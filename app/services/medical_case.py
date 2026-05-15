@@ -101,3 +101,19 @@ async def complete_case(
 	await case_repo.commit()
 	await case_repo.refresh(case)
 	return case
+
+
+async def delete_owned_case(
+	case_repo: MedicalCaseRepository,
+	case_id: UUID,
+	*,
+	user: User,
+) -> None:
+	"""Delete a medical case owned by the given user. Related rows cascade from the DB."""
+	case = await case_repo.get_by_id(case_id)
+	if case is None:
+		raise NotFoundError("Medical case not found.")
+	if case.user_id != user.id:
+		raise ForbiddenError("You do not have access to this case.")
+	await case_repo.delete(case)
+	await case_repo.commit()
