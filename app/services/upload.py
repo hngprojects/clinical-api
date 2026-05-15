@@ -12,6 +12,7 @@ happened yet at that point, satisfying the "storage failure ≠ DB record" rule)
 from __future__ import annotations
 
 import logging
+import tempfile
 import uuid
 from pathlib import Path
 
@@ -45,7 +46,7 @@ def _detect_type(content: bytes) -> tuple[str, str] | None:
 async def _upload_local(content: bytes, filename: str) -> str:
 	"""Save to /tmp and return a file:// URL. Dev-only fallback."""
 	try:
-		dest = Path("/tmp/clinsights_uploads")
+		dest = Path(tempfile.gettempdir()) / "clinsights_uploads"
 		dest.mkdir(parents=True, exist_ok=True)
 		out = dest / filename
 		out.write_bytes(content)
