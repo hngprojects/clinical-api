@@ -3,6 +3,7 @@ from app.models.auth import PasswordResetToken
 from app.models.base import Base
 from app.models.chat import Chat
 from app.models.contact import ContactMessage
+from app.models.guest_session import GuestSession
 from app.models.lab_result import LabResult
 from app.models.medical_case import MedicalCase
 from app.models.notification import Notification
@@ -26,4 +27,5 @@ __all__ = [
 	"User",
 	"UserRole",
 	"Waitlist",
+	"GuestSession",
 ]

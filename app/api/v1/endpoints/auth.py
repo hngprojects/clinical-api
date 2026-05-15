@@ -10,6 +10,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 from app.api.deps import (
 	CurrentUser,
 	DBSession,
+	GuestSessionId,
 	OtpRepo,
 	PasswordResetRepo,
 	TokenBlocklistRepo,
@@ -154,13 +155,16 @@ async def verify_otp(
 	user_repo: UserRepo,
 	otp_repo: OtpRepo,
 	response: Response,
+	guest_session_id: GuestSessionId = None,
 ) -> SuccessResponse[TokenResponse]:
-	"""Verify the email-verification OTP sent after signup."""
+	"""Verify the email-verification OTP sent after signup.
+	If X-Guest-Session-ID header is present, migrates guest cases to the new account."""
 	user, access_token, ttl_seconds, refresh_token = await authenticate_otp(
 		user_repo,
 		otp_repo,
 		email=payload.email,
 		code=payload.code,
+		guest_session_id=guest_session_id,
 	)
 	_set_refresh_cookie(response, refresh_token)
 	return SuccessResponse(

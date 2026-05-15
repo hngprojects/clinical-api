@@ -113,6 +113,7 @@ async def authenticate_otp(
 	*,
 	email: str,
 	code: str,
+	guest_session_id: str | None = None,
 ) -> tuple[User, str, int, str]:
 	"""Verify an email-verification OTP and return (user, access_token, ttl_seconds, refresh_token).
 
@@ -136,6 +137,15 @@ async def authenticate_otp(
 
 	await user_repo.commit()
 	await user_repo.refresh(user)
+
+	# Migrate guest cases to this user account if a guest session was provided
+	if guest_session_id:
+		from app.repositories.medical_case import MedicalCaseRepository
+		from app.services.guest import migrate_guest_cases
+
+		medical_case_repo = MedicalCaseRepository(user_repo._session)
+		await migrate_guest_cases(guest_session_id, user.id, medical_case_repo)
+		await user_repo.commit()
 
 	token, ttl_seconds = create_access_token(user.id)
 	refresh_token = await create_refresh_token(user.id)
