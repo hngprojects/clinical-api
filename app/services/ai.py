@@ -122,3 +122,78 @@ async def generate_interpretation(extracted_values: dict[str, Any]) -> dict[str,
 
 class InterpretationError(Exception):
 	"""Raised when AI interpretation cannot produce a usable result."""
+
+
+MEDICAL_DISCLAIMER = (
+	"This is not a medical diagnosis. Please consult a qualified healthcare "
+	"professional for personalised advice."
+)
+
+_CHAT_SYSTEM_PROMPT = f"""\
+You are a clinical decision-support assistant helping a patient understand
+their laboratory results. Answer follow-up questions using ONLY the lab values
+and interpretation summary provided in the case context.
+
+Rules:
+- Reference specific test names and values from the case context when relevant.
+- If asked about topics unrelated to this report, explain you can only discuss
+  these laboratory results.
+- Do not provide a diagnosis or prescribe treatment.
+- Always end your reply with this disclaimer verbatim:
+"{MEDICAL_DISCLAIMER}"
+
+Respond in plain, empathetic language. Return only the reply text — no JSON,
+no markdown fences.
+"""
+
+
+async def generate_chat_response(
+	*,
+	case_context: str,
+	messages: list[dict[str, str]],
+) -> str:
+	"""
+	Generate a follow-up chat reply grounded in case lab data and history.
+
+	Args:
+		case_context: Formatted lab values and interpretation summary.
+		messages: Prior turns as {role, content} with role user|assistant.
+
+	Raises:
+		ChatError — if the model returns an empty or unusable response.
+	"""
+	if not case_context.strip():
+		raise ChatError("Case context is required for chat")
+
+	history_lines: list[str] = []
+	for message in messages:
+		role = message.get("role", "user")
+		label = "Patient" if role == "user" else "Assistant"
+		history_lines.append(f"{label}: {message.get('content', '')}")
+
+	history_block = "\n".join(history_lines) if history_lines else "(no prior messages)"
+	user_message = f"=== CASE CONTEXT ===\n{case_context}\n\n=== CONVERSATION ===\n{history_block}"
+
+	try:
+		raw_text = await text_complete(
+			_CHAT_SYSTEM_PROMPT,
+			user_message,
+			max_tokens=800,
+			temperature=0.3,
+		)
+	except Exception as exc:
+		raise ChatError(f"LLM call failed: {exc}") from exc
+
+	reply = raw_text.strip()
+	if not reply:
+		raise ChatError("Model returned an empty response")
+
+	if MEDICAL_DISCLAIMER not in reply:
+		reply = f"{reply}\n\n{MEDICAL_DISCLAIMER}"
+
+	logger.info("[ai] chat response generated (%d chars)", len(reply))
+	return reply
+
+
+class ChatError(Exception):
+	"""Raised when AI chat cannot produce a usable result."""
