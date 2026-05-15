@@ -35,6 +35,19 @@ class UserUpdate(BaseModel):
 	is_active: bool | None = None
 
 
+class EmailUpdateRequest(BaseModel):
+	"""Schema for requesting an authenticated email change."""
+
+	email: EmailStr
+	password: str = Field(min_length=1, max_length=72)
+
+
+class EmailUpdateVerifyRequest(BaseModel):
+	"""Schema for verifying an authenticated email change."""
+
+	token: str = Field(min_length=4, max_length=12)
+
+
 class UserResponse(UserBase):
 	"""Response schema for a user."""
 
