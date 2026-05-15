@@ -59,9 +59,7 @@ class Settings(BaseSettings):
 
 	FRONTEND_URL: str = ""
 
-	BUCKET_NAME: str
-	SUPABASE_URL: str
-	SUPABASE_KEY: str
+	CHUNK_SIZE: int = 1024 * 1024  # 1MB processed per write
 
 	@field_validator("RESEND_FROM_EMAIL", mode="after")
 	@classmethod

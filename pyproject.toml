@@ -24,7 +24,7 @@ dependencies = [
     "urllib3>=2.7.0",
     "bandit>=1.9.4",
     "python-decouple>=3.8",
-    "supabase>=2.30.0",
+    "aiofiles>=25.1.0",
 ]
 
 [dependency-groups]
