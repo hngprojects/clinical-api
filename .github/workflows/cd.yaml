@@ -57,7 +57,7 @@ jobs:
 
             echo "⏳ Waiting for API to be ready..."
             for i in $(seq 1 15); do
-              curl -sf http://localhost:8004/api/v1/health && echo "✅ Staging deployment complete!" && exit 0
+              curl -sf http://localhost:8000/api/v1/health && echo "✅ Staging deployment complete!" && exit 0
               sleep 2
             done
             echo "❌ Health check failed after deployment!"
