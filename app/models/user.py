@@ -28,6 +28,8 @@ class User(Base):
 
 	id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 	email: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+	pending_email: Mapped[str | None] = mapped_column(String, nullable=True)
+	email_change_token: Mapped[str | None] = mapped_column(String, nullable=True)
 	password_hash: Mapped[str | None] = mapped_column(String, nullable=True)
 	google_id: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
 	first_name: Mapped[str] = mapped_column(String, nullable=False)
