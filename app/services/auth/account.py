@@ -14,6 +14,7 @@ from app.core.security import hash_password, verify_password
 from app.models.otp import OtpPurpose
 from app.models.user import User, UserRole
 from app.repositories.otp import OtpRepository
+from app.repositories.token_blocklist import TokenBlocklistRepository
 from app.repositories.user import UserRepository
 from app.schemas.auth import SignupRequest
 from app.services.auth.otp import (
@@ -228,3 +229,55 @@ async def verify_email_change(
 
 def otp_ttl_seconds() -> int:
 	return get_settings().OTP_EXPIRES_MINUTES * 60
+
+
+async def update_profile(
+	user_repo: UserRepository,
+	*,
+	user: User,
+	first_name: str | None,
+	last_name: str | None,
+) -> User:
+	"""Update the user's first and/or last name. Ignores None fields."""
+	if first_name is not None:
+		user.first_name = first_name.strip()
+	if last_name is not None:
+		user.last_name = last_name.strip()
+	await user_repo.commit()
+	await user_repo.refresh(user)
+	return user
+
+
+async def update_password(
+	user_repo: UserRepository,
+	*,
+	user: User,
+	current_password: str,
+	new_password: str,
+) -> None:
+	"""Verify the current password then replace it with a new bcrypt hash.
+
+	Raises BadRequestError if the current password is wrong.
+	"""
+	if not user.password_hash or not verify_password(current_password, user.password_hash):
+		raise BadRequestError("Incorrect password")
+	user.password_hash = hash_password(new_password)
+	await user_repo.commit()
+
+
+async def delete_account(
+	user_repo: UserRepository,
+	blocklist_repo: TokenBlocklistRepository,
+	*,
+	user: User,
+	jti: str,
+	expires_at: datetime,
+) -> None:
+	"""Revoke the active access token then permanently delete the user.
+
+	The token is blocklisted before the row is removed so any concurrent
+	request carrying the same JWT is rejected even if it arrives between
+	the two writes.
+	"""
+	await blocklist_repo.revoke(jti=jti, user_id=user.id, expires_at=expires_at)
+	await user_repo.delete(user)
