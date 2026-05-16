@@ -146,6 +146,15 @@ async def test_chat_empty_text_returns_422(client, test_user, auth_headers):
 	assert response.status_code == 422
 
 
+async def test_chat_requires_identity_returns_401(client, test_user):
+	case_id = await _seed_ready_case(test_user)
+	response = await client.post(
+		f"{API}/cases/{case_id}/chat",
+		json={"text": "Hi"},
+	)
+	assert response.status_code == 401
+
+
 async def test_chat_whitespace_only_text_returns_422(client, test_user, auth_headers):
 	case_id = await _seed_ready_case(test_user)
 

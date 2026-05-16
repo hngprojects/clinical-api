@@ -2,7 +2,7 @@ from uuid import UUID
 
 from fastapi import HTTPException, status
 
-from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError
+from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError, UnauthorizedError
 from app.models.chat import Chat, SenderType
 from app.models.user import User
 from app.repositories.ai_interpretation import AIInterpretationRepository
@@ -32,9 +32,12 @@ async def send_message(
 	case = await case_repo.get_by_id(case_id)
 	if case is None:
 		raise NotFoundError("Medical case not found.")
-	if user is not None and case.user_id != user.id:
-		raise ForbiddenError("You do not have access to this case.")
-	if user is None and guest_session_id is not None and case.guest_session_id != guest_session_id:
+	if user is None and guest_session_id is None:
+		raise UnauthorizedError("Authentication or guest session is required.")
+	if case.user_id is not None:
+		if user is None or case.user_id != user.id:
+			raise ForbiddenError("You do not have access to this case.")
+	elif guest_session_id is None or case.guest_session_id != guest_session_id:
 		raise ForbiddenError("You do not have access to this case.")
 
 	lab_result = await lab_repo.get_latest_with_extracted_values(case_id)

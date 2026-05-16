@@ -187,8 +187,11 @@ async def generate_chat_response(
 	if not reply:
 		raise ChatError("Model returned an empty response")
 
-	if MEDICAL_DISCLAIMER not in reply:
-		reply = f"{reply}\n\n{MEDICAL_DISCLAIMER}"
+	core_reply = reply.rstrip()
+	if not core_reply.endswith(MEDICAL_DISCLAIMER):
+		reply = f"{core_reply}\n\n{MEDICAL_DISCLAIMER}"
+	else:
+		reply = core_reply
 
 	logger.info("[ai] chat response generated (%d chars)", len(reply))
 	return reply
