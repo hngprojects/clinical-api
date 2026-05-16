@@ -1,7 +1,7 @@
 """create database tables
 
 Revision ID: cd5d4fabf8c6
-Revises: a8598ffe37d5
+Revises: e425a99e7480
 Create Date: 2026-05-14 20:21:18.442635
 
 """
