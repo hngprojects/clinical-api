@@ -84,11 +84,13 @@ async def get_case_full(
 	user: User | None = None,
 	guest_session_id: str | None = None,
 ) -> CaseFullDetail:
-	"""Load case with lab results, latest interpretation, and chat history (chronological)."""
+	"""Load case with all lab results, latest interpretation, and full chat history."""
 	case = await get_case(case_repo, case_id, user=user, guest_session_id=guest_session_id)
-	lab_results = await lab_repo.list_by_case(case_id, offset=0, limit=100)
+	lab_count = await lab_repo.count_by_case(case_id)
+	lab_results = await lab_repo.list_by_case(case_id, offset=0, limit=lab_count) if lab_count else []
 	interpretation = await interp_repo.get_latest_for_case(case_id)
-	chats = await chat_repo.list_by_case(case_id, offset=0, limit=500)
+	chat_count = await chat_repo.count_by_case(case_id)
+	chats = await chat_repo.list_by_case(case_id, offset=0, limit=chat_count) if chat_count else []
 	return CaseFullDetail(
 		case=case,
 		lab_results=lab_results,

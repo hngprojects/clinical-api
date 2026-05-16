@@ -183,13 +183,3 @@ new_changes_*.md
 
 docker-compose.yml
 docker/
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-.env.staging.local
-.env.production
-.env.staging
-.env.development
-.env.test
