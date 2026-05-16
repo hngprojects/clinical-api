@@ -177,3 +177,9 @@ jeff.py
 
 .vscode
 public/
+
+# Local agent / contributor changelog notes (not tracked)
+new_changes_*.md
+
+docker-compose.yml
+docker/

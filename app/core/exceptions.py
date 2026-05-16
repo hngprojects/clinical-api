@@ -44,6 +44,13 @@ class ConflictError(HTTPException):
 		super().__init__(status_code=status.HTTP_409_CONFLICT, detail=message)
 
 
+class BadRequestError(HTTPException):
+	"""Raised when a request payload or state is invalid."""
+
+	def __init__(self, message: str = "Bad request") -> None:
+		super().__init__(status_code=status.HTTP_400_BAD_REQUEST, detail=message)
+
+
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
 	"""Handles all HTTPExceptions and returns a consistent error response."""
 	return JSONResponse(

@@ -14,7 +14,10 @@ jobs:
     name: Deploy to Staging
     runs-on: ubuntu-latest
     environment: staging
-    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'staging'
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.head_branch == 'staging'
     steps:
       - name: Deploy to Staging Server
         uses: appleboy/ssh-action@v1.0.3
@@ -23,15 +26,16 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /home/akinola/Clinical-be
-
+            set -e
+            cd /home/chima_nigerian/Clinical-be
             export PATH="$HOME/.local/bin:$PATH"
+
+            git fetch origin staging
+            git checkout staging
             git pull origin staging
 
-            echo "Installing dependencies..."
             uv sync
 
-            echo "Exporting environment variables..."
             export DATABASE_URL="${{ secrets.DATABASE_URL }}"
             export GOOGLE_CLIENT_ID="${{ secrets.GOOGLE_CLIENT_ID }}"
             export GOOGLE_CLIENT_SECRET="${{ secrets.GOOGLE_CLIENT_SECRET }}"
@@ -40,14 +44,15 @@ jobs:
             export JWT_SECRET="${{ secrets.JWT_SECRET }}"
             export FRONTEND_URL="${{ secrets.FRONTEND_URL }}"
             export RESEND_API_KEY="${{ secrets.RESEND_API_KEY }}"
-            export RESENT_FROM_EMAIL="${{ secrets.RESEND_FROM_EMAIL }}"
+            export RESEND_FROM_EMAIL="${{ secrets.RESEND_FROM_EMAIL }}"
 
-            echo "Running migrations..."
             uv run alembic upgrade head
 
-            pm2 delete staging celery-worker-staging flower-staging 2>/dev/null || true
-            pm2 start ecosystem.config.js --only staging,celery-worker-staging,flower-staging
+            pm2 start ecosystem.config.js --only staging,celery-worker-staging,flower-staging || \
+            pm2 reload ecosystem.config.js --only staging,celery-worker-staging,flower-staging
+
             pm2 save
+            echo "✅ Staging deployment complete!"
 
   # ============================================
   # Deploy Production (main branch)
@@ -55,7 +60,10 @@ jobs:
   deploy-production:
     name: Deploy to Production
     runs-on: ubuntu-latest
-    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main'
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.head_branch == 'main'
     environment: production
     steps:
       - name: Deploy to Production Server
@@ -65,11 +73,14 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /home/akinola/Clinical-be
+            set -e
+            cd /home/chima_nigerian/Clinical-be
             export PATH="$HOME/.local/bin:$PATH"
+
+            git fetch origin main
+            git checkout main
             git pull origin main
 
-            echo "Installing dependencies..."
             uv sync
 
             export DATABASE_URL="${{ secrets.DATABASE_URL }}"
@@ -80,11 +91,12 @@ jobs:
             export JWT_SECRET="${{ secrets.JWT_SECRET }}"
             export FRONTEND_URL="${{ secrets.FRONTEND_URL }}"
             export RESEND_API_KEY="${{ secrets.RESEND_API_KEY }}"
-            export RESENT_FROM_EMAIL="${{ secrets.RESEND_FROM_EMAIL }}"
+            export RESEND_FROM_EMAIL="${{ secrets.RESEND_FROM_EMAIL }}"
 
-            echo "Running migrations..."
             uv run alembic upgrade head
 
-            pm2 delete production celery-worker-production flower-production 2>/dev/null || true
-            pm2 start ecosystem.config.js --only production,celery-worker-production,flower-production
+            pm2 start ecosystem.config.js --only production,celery-worker-production,flower-production || \
+            pm2 reload ecosystem.config.js --only production,celery-worker-production,flower-production
+
             pm2 save
+            echo "✅ Production deployment complete!"
