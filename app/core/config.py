@@ -37,9 +37,11 @@ class Settings(BaseSettings):
 	OTP_MAX_ATTEMPTS: int = 5
 	OTP_PEPPER: str = Field(min_length=32)
 
-	RESEND_API_KEY: str | None = None
-	RESEND_FROM_EMAIL: str = ""
-	RESEND_FROM_NAME: str = "Clinsights"
+
+
+	BREVO_API_KEY: str | None = None
+	BREVO_FROM_EMAIL: str = ""
+	BREVO_FROM_NAME: str = "Clinsights"
 
 	# SMTP (fallback email provider)
 	SMTP_HOST: str = ""
@@ -69,14 +71,7 @@ class Settings(BaseSettings):
 
 	FRONTEND_URL: str = ""
 
-	@field_validator("RESEND_FROM_EMAIL", mode="after")
-	@classmethod
-	def resend_from_email_required_when_resend_enabled(cls, v: str, info: object) -> str:
-		"""Require a non-empty RESEND_FROM_EMAIL when Resend is configured."""
-		data = getattr(info, "data", {})
-		if data.get("RESEND_API_KEY") and not v:
-			raise ValueError("RESEND_FROM_EMAIL must be set when RESEND_API_KEY is configured")
-		return v
+
 
 	# Password reset
 	FRONTEND_RESET_PASSWORD_URL: str = f"{FRONTEND_URL}/reset-password"
