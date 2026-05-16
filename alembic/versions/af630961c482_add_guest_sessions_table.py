@@ -29,11 +29,12 @@ def upgrade() -> None:
 		sa.PrimaryKeyConstraint('id'),
 	)
 	op.create_index(
-		op.f('ix_guest_sessions_session_id'),
-		'guest_sessions',
-		['session_id'],
-		unique=True,
-	)
+        op.f('ix_guest_sessions_session_id'),
+        'guest_sessions',
+        ['session_id'],
+        unique=True,
+        if_not_exists=True,
+    )
 
 
 def downgrade() -> None:
