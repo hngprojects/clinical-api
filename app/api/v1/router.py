@@ -10,6 +10,7 @@ from app.api.v1.endpoints import (
 	medical_case,
 	notification,
 	upload,
+	users,
 	waitlist,
 )
 
@@ -24,3 +25,4 @@ api_router.include_router(chat.router)
 api_router.include_router(notification.router)
 api_router.include_router(waitlist.router)
 api_router.include_router(contact.router)
+api_router.include_router(users.router)

@@ -3,7 +3,7 @@ import logging
 from app.models.contact import ContactMessage
 from app.repositories.contact import ContactRepository
 from app.schemas.contact import ContactRequest
-from app.tasks.email import send_contact_feedback_email_task
+from app.tasks.emails import send_contact_feedback_email_task
 
 logger = logging.getLogger(__name__)
 

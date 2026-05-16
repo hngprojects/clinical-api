@@ -16,11 +16,6 @@ from app.core.exceptions import (
 
 settings = get_settings()
 
-if not settings.RESEND_API_KEY and not settings.ALLOW_STDOUT_EMAIL:
-	import warnings
-
-	warnings.warn("Resend API key (RESEND_API_KEY) is not set and ALLOW_STDOUT_EMAIL is False. Emails will fail.")
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> None:  # noqa: ARG001
