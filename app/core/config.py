@@ -37,8 +37,6 @@ class Settings(BaseSettings):
 	OTP_MAX_ATTEMPTS: int = 5
 	OTP_PEPPER: str = Field(min_length=32)
 
-
-
 	BREVO_API_KEY: str | None = None
 	BREVO_FROM_EMAIL: str = ""
 	BREVO_FROM_NAME: str = "Clinsights"
@@ -70,8 +68,6 @@ class Settings(BaseSettings):
 	PIPELINE_TIMEOUT_SECONDS: int = 30
 
 	FRONTEND_URL: str = ""
-
-
 
 	# Password reset
 	FRONTEND_RESET_PASSWORD_URL: str = f"{FRONTEND_URL}/reset-password"

@@ -22,7 +22,6 @@ class BaseMailTransport(ABC):
 		raise NotImplementedError()
 
 
-
 class BrevoTransport(BaseMailTransport):
 	def __init__(self, api_key: str, from_email: str, from_name: str | None = None) -> None:
 		self.api_key = api_key
@@ -103,7 +102,6 @@ class SMTPTransport(BaseMailTransport):
 			return await asyncio.to_thread(_smtp_send)
 		except Exception as exc:
 			raise EmailError("SMTP provider failed") from exc
-
 
 
 def _build_brevo_transport() -> BrevoTransport | None:
