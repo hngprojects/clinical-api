@@ -17,21 +17,21 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    """Upgrade schema."""
-    op.execute("""
-        CREATE TABLE IF NOT EXISTS guest_sessions (
-            id UUID NOT NULL,
-            session_id VARCHAR(36) NOT NULL,
-            expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
-            created_at TIMESTAMP WITH TIME ZONE NOT NULL,
-            last_active_at TIMESTAMP WITH TIME ZONE NOT NULL,
-            PRIMARY KEY (id)
-        )
-    """)
-    op.execute("""
-        CREATE UNIQUE INDEX IF NOT EXISTS ix_guest_sessions_session_id
-        ON guest_sessions (session_id)
-    """)
+	"""Upgrade schema."""
+	op.execute("""
+		CREATE TABLE guest_sessions (
+			id UUID NOT NULL,
+			session_id VARCHAR(36) NOT NULL,
+			expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+			created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+			last_active_at TIMESTAMP WITH TIME ZONE NOT NULL,
+			PRIMARY KEY (id)
+		)
+	""")
+	op.execute("""
+		CREATE UNIQUE INDEX ix_guest_sessions_session_id
+		ON guest_sessions (session_id)
+	""")
 
 
 def downgrade() -> None:

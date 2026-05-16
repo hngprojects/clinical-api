@@ -144,10 +144,11 @@ async def authenticate_otp(
 		guest_repo = GuestSessionRepository(user_repo._session)
 		try:
 			await validate_guest_session(guest_repo, guest_session_id)
-			medical_case_repo = MedicalCaseRepository(user_repo._session)
-			await migrate_guest_cases(guest_session_id, user.id, medical_case_repo)
 		except NotFoundError:
 			pass  # expired or invalid session — skip migration silently
+		else:
+			medical_case_repo = MedicalCaseRepository(user_repo._session)
+			await migrate_guest_cases(guest_session_id, user.id, medical_case_repo)
 
 	await user_repo.commit()
 	await user_repo.refresh(user)

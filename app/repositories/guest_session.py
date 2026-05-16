@@ -28,6 +28,9 @@ class GuestSessionRepository(BaseRepository[GuestSession]):
 		now = datetime.now(timezone.utc)
 		from datetime import timedelta
 
+		if session.expires_at <= now:
+			return None
+
 		session.last_active_at = now
 		session.expires_at = now + timedelta(hours=1)
 		return session

@@ -59,4 +59,5 @@ async def migrate_guest_cases(
 	for case in cases:
 		case.user_id = user_id
 		case.guest_session_id = None
+	await medical_case_repo.commit()
 	return len(cases)
