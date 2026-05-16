@@ -85,6 +85,10 @@ async def get_case_full(
 	guest_session_id: str | None = None,
 ) -> CaseFullDetail:
 	"""Load case with all lab results, latest interpretation, and full chat history."""
+	if user is None and guest_session_id is None:
+		raise ForbiddenError("You must be authenticated to access this case.")
+	if user is not None and guest_session_id is not None:
+		raise ForbiddenError("You cannot access a case with both user and guest session.")
 	case = await get_case(case_repo, case_id, user=user, guest_session_id=guest_session_id)
 	lab_count = await lab_repo.count_by_case(case_id)
 	lab_results = await lab_repo.list_by_case(case_id, offset=0, limit=lab_count) if lab_count else []
