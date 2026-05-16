@@ -69,14 +69,6 @@ class Settings(BaseSettings):
 
 	FRONTEND_URL: str = ""
 
-	# Storage
-	STORAGE_PROVIDER: str = "local"  # "local" | "minio"
-	MINIO_ENDPOINT: str = ""         # host:port — e.g. "minio.internal:9000"
-	MINIO_ACCESS_KEY: str = ""
-	MINIO_SECRET_KEY: str = ""
-	MINIO_BUCKET: str = ""
-	MINIO_SECURE: bool = False       # True for HTTPS, False for plain HTTP
-
 	@field_validator("RESEND_FROM_EMAIL", mode="after")
 	@classmethod
 	def resend_from_email_required_when_resend_enabled(cls, v: str, info: object) -> str:
