@@ -38,7 +38,6 @@ class UserRepository:
 
 	async def delete(self, user: User) -> None:
 		await self._session.delete(user)
-		await self._session.commit()
 
 	async def rollback(self) -> None:
 		await self._session.rollback()

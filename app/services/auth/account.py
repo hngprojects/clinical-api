@@ -240,9 +240,15 @@ async def update_profile(
 ) -> User:
 	"""Update the user's first and/or last name. Ignores None fields."""
 	if first_name is not None:
-		user.first_name = first_name.strip()
+		normalized = first_name.strip()
+		if not normalized:
+			raise BadRequestError("First name cannot be blank.")
+		user.first_name = normalized
 	if last_name is not None:
-		user.last_name = last_name.strip()
+		normalized = last_name.strip()
+		if not normalized:
+			raise BadRequestError("Last name cannot be blank.")
+		user.last_name = normalized
 	await user_repo.commit()
 	await user_repo.refresh(user)
 	return user
@@ -281,3 +287,4 @@ async def delete_account(
 	"""
 	await blocklist_repo.revoke(jti=jti, user_id=user.id, expires_at=expires_at)
 	await user_repo.delete(user)
+	await user_repo.commit()

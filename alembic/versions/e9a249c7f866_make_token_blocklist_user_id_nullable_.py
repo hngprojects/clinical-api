@@ -20,10 +20,11 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     op.alter_column('token_blocklist', 'user_id', existing_type=sa.UUID(), nullable=True)
     op.drop_constraint('token_blocklist_user_id_fkey', 'token_blocklist', type_='foreignkey')
-    op.create_foreign_key(None, 'token_blocklist', 'users', ['user_id'], ['id'], ondelete='SET NULL')
+    op.create_foreign_key('token_blocklist_user_id_fkey', 'token_blocklist', 'users', ['user_id'], ['id'], ondelete='SET NULL')
 
 
 def downgrade() -> None:
-    op.drop_constraint(None, 'token_blocklist', type_='foreignkey')
+    op.drop_constraint('token_blocklist_user_id_fkey', 'token_blocklist', type_='foreignkey')
     op.create_foreign_key('token_blocklist_user_id_fkey', 'token_blocklist', 'users', ['user_id'], ['id'], ondelete='CASCADE')
+    op.execute('DELETE FROM token_blocklist WHERE user_id IS NULL')
     op.alter_column('token_blocklist', 'user_id', existing_type=sa.UUID(), nullable=False)
