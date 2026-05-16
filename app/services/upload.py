@@ -59,34 +59,42 @@ async def _upload_local(content: bytes, filename: str) -> str:
 		) from exc
 
 
-async def _upload_s3(content: bytes, filename: str, media_type: str) -> str:
-	"""Upload to S3 and return the public HTTPS URL."""
-	import boto3
-	from botocore.exceptions import BotoCoreError, ClientError
+async def _upload_minio(content: bytes, filename: str, media_type: str) -> str:
+	"""Upload to MinIO and return the object URL."""
+	import asyncio
+	import io
+
+	from minio import Minio
+	from minio.error import S3Error
 
 	settings = get_settings()
-	try:
-		client = boto3.client(
-			"s3",
-			region_name=settings.AWS_S3_REGION,
-			aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-			aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+
+	def _put() -> None:
+		client = Minio(
+			settings.MINIO_ENDPOINT,
+			access_key=settings.MINIO_ACCESS_KEY,
+			secret_key=settings.MINIO_SECRET_KEY,
+			secure=settings.MINIO_SECURE,
 		)
 		client.put_object(
-			Bucket=settings.AWS_S3_BUCKET,
-			Key=f"uploads/{filename}",
-			Body=content,
-			ContentType=media_type,
+			bucket_name=settings.MINIO_BUCKET,
+			object_name=f"uploads/{filename}",
+			data=io.BytesIO(content),
+			length=len(content),
+			content_type=media_type,
 		)
-	except (BotoCoreError, ClientError) as exc:
-		logger.error("[upload] S3 upload failed for %s: %s", filename, exc)
+
+	try:
+		await asyncio.to_thread(_put)
+	except S3Error as exc:
+		logger.error("[upload] MinIO upload failed for %s: %s", filename, exc)
 		raise HTTPException(
 			status_code=status.HTTP_502_BAD_GATEWAY,
 			detail="File could not be stored. Please try again.",
 		) from exc
 
-	base = settings.STORAGE_BASE_URL.rstrip("/")
-	return f"{base}/uploads/{filename}"
+	scheme = "https" if settings.MINIO_SECURE else "http"
+	return f"{scheme}://{settings.MINIO_ENDPOINT}/{settings.MINIO_BUCKET}/uploads/{filename}"
 
 
 # Public API
@@ -117,8 +125,8 @@ async def validate_and_upload(file: UploadFile) -> FileObject:
 
 	settings = get_settings()
 	try:
-		if settings.STORAGE_PROVIDER == "s3":
-			url = await _upload_s3(content, unique_name, media_type)
+		if settings.STORAGE_PROVIDER == "minio":
+			url = await _upload_minio(content, unique_name, media_type)
 		else:
 			url = await _upload_local(content, unique_name)
 			logger.warning("[upload] Using local storage — not suitable for production.")

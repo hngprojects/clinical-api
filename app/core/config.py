@@ -70,12 +70,12 @@ class Settings(BaseSettings):
 	FRONTEND_URL: str = ""
 
 	# Storage
-	STORAGE_PROVIDER: str = "local"  # "local" | "s3"
-	AWS_ACCESS_KEY_ID: str = ""
-	AWS_SECRET_ACCESS_KEY: str = ""
-	AWS_S3_BUCKET: str = ""
-	AWS_S3_REGION: str = "us-east-1"
-	STORAGE_BASE_URL: str = ""  # public URL prefix for stored files
+	STORAGE_PROVIDER: str = "local"  # "local" | "minio"
+	MINIO_ENDPOINT: str = ""         # host:port — e.g. "minio.internal:9000"
+	MINIO_ACCESS_KEY: str = ""
+	MINIO_SECRET_KEY: str = ""
+	MINIO_BUCKET: str = ""
+	MINIO_SECURE: bool = False       # True for HTTPS, False for plain HTTP
 
 	@field_validator("RESEND_FROM_EMAIL", mode="after")
 	@classmethod
