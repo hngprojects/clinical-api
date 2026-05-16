@@ -1,7 +1,7 @@
 """add guest_sessions table
 
 Revision ID: af630961c482
-Revises: a8598ffe37d5
+Revises: 3b1e0f4a2d9c
 Create Date: 2026-05-15 13:58:33.470858
 
 """
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = 'af630961c482'
-down_revision: Union[str, Sequence[str], None] = 'a8598ffe37d5'
+down_revision: Union[str, Sequence[str], None] = '3b1e0f4a2d9c'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
