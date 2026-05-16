@@ -2,20 +2,30 @@ name: CD
 
 on:
   pull_request:
-    types: [closed]
     branches: [staging, main]
+    types: [closed]
+
+concurrency:
+  group: cd-${{ github.base_ref }}
+  cancel-in-progress: true
 
 jobs:
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yaml
+    permissions:
+      contents: read
+      security-events: write
+
   # ============================================
   # Deploy Staging (staging branch)
   # ============================================
   deploy-staging:
     name: Deploy to Staging
+    needs: ci
     runs-on: ubuntu-latest
     environment: staging
-    if: >
-      github.event.pull_request.merged == true &&
-      github.event.pull_request.base.ref == 'staging'
+    if: github.event.pull_request.merged == true && github.base_ref == 'staging'
     steps:
       - name: Deploy to Staging Server
         uses: appleboy/ssh-action@v1.0.3
@@ -24,7 +34,7 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            set -e
+            set -euo pipefail
             cd /home/chima_nigerian/Clinical-be
             export PATH="$HOME/.local/bin:$PATH"
 
@@ -58,11 +68,10 @@ jobs:
   # ============================================
   deploy-production:
     name: Deploy to Production
+    needs: ci
     runs-on: ubuntu-latest
     environment: production
-    if: >
-      github.event.pull_request.merged == true &&
-      github.event.pull_request.base.ref == 'main'
+    if: github.event.pull_request.merged == true && github.base_ref == 'main'
     steps:
       - name: Deploy to Production Server
         uses: appleboy/ssh-action@v1.0.3
@@ -71,7 +80,7 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            set -e
+            set -euo pipefail
             cd /home/chima_nigerian/Clinical-be
             export PATH="$HOME/.local/bin:$PATH"
 
@@ -94,8 +103,8 @@ jobs:
 
             echo "⏳ Waiting for API to be ready..."
             for i in $(seq 1 15); do
-              curl -sf http://localhost:8001/api/v1/health && echo "Production deployment complete!" && exit 0
+              curl -sf http://localhost:8001/api/v1/health && echo "✅ Production deployment complete!" && exit 0
               sleep 2
             done
-            echo "Health check failed after deployment!"
+            echo "❌ Health check failed after deployment!"
             exit 1
