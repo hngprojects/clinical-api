@@ -1,23 +1,31 @@
 name: CD
 
 on:
-  workflow_run:
-    workflows: ["CI"]
-    types: [completed]
+  pull_request:
     branches: [staging, main]
+    types: [closed]
+
+concurrency:
+  group: cd-${{ github.base_ref }}
+  cancel-in-progress: true
 
 jobs:
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yaml
+    permissions:
+      contents: read
+      security-events: write
+
   # ============================================
   # Deploy Staging (staging branch)
   # ============================================
   deploy-staging:
     name: Deploy to Staging
+    needs: ci
     runs-on: ubuntu-latest
     environment: staging
-    if: >
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'pull_request' &&
-      github.event.workflow_run.head_branch == 'staging'
+    if: github.event.pull_request.merged == true && github.base_ref == 'staging'
     steps:
       - name: Deploy to Staging Server
         uses: appleboy/ssh-action@v1.0.3
@@ -26,7 +34,7 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            set -e
+            set -euo pipefail
             cd /home/chima_nigerian/Clinical-be
             export PATH="$HOME/.local/bin:$PATH"
 
@@ -36,15 +44,9 @@ jobs:
 
             uv sync
 
-            export DATABASE_URL="${{ secrets.DATABASE_URL }}"
-            export GOOGLE_CLIENT_ID="${{ secrets.GOOGLE_CLIENT_ID }}"
-            export GOOGLE_CLIENT_SECRET="${{ secrets.GOOGLE_CLIENT_SECRET }}"
-            export GOOGLE_REDIRECT_URI="${{ secrets.GOOGLE_REDIRECT_URI }}"
-            export OTP_PEPPER="${{ secrets.OTP_PEPPER }}"
-            export JWT_SECRET="${{ secrets.JWT_SECRET }}"
-            export FRONTEND_URL="${{ secrets.FRONTEND_URL }}"
-            export RESEND_API_KEY="${{ secrets.RESEND_API_KEY }}"
-            export RESEND_FROM_EMAIL="${{ secrets.RESEND_FROM_EMAIL }}"
+            set -a
+            source /home/chima_nigerian/Clinical-be/.env.staging
+            set +a
 
             uv run alembic upgrade head
 
@@ -52,19 +54,24 @@ jobs:
             pm2 reload ecosystem.config.js --only staging,celery-worker-staging,flower-staging
 
             pm2 save
-            echo "✅ Staging deployment complete!"
+
+            echo "⏳ Waiting for API to be ready..."
+            for i in $(seq 1 15); do
+              curl -sf http://localhost:8004/api/v1/health && echo "✅ Staging deployment complete!" && exit 0
+              sleep 2
+            done
+            echo "❌ Health check failed after deployment!"
+            exit 1
 
   # ============================================
   # Deploy Production (main branch)
   # ============================================
   deploy-production:
     name: Deploy to Production
+    needs: ci
     runs-on: ubuntu-latest
-    if: >
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'pull_request' &&
-      github.event.workflow_run.head_branch == 'main'
     environment: production
+    if: github.event.pull_request.merged == true && github.base_ref == 'main'
     steps:
       - name: Deploy to Production Server
         uses: appleboy/ssh-action@v1.0.3
@@ -73,7 +80,7 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            set -e
+            set -euo pipefail
             cd /home/chima_nigerian/Clinical-be
             export PATH="$HOME/.local/bin:$PATH"
 
@@ -83,15 +90,9 @@ jobs:
 
             uv sync
 
-            export DATABASE_URL="${{ secrets.DATABASE_URL }}"
-            export GOOGLE_CLIENT_ID="${{ secrets.GOOGLE_CLIENT_ID }}"
-            export GOOGLE_CLIENT_SECRET="${{ secrets.GOOGLE_CLIENT_SECRET }}"
-            export GOOGLE_REDIRECT_URI="${{ secrets.GOOGLE_REDIRECT_URI }}"
-            export OTP_PEPPER="${{ secrets.OTP_PEPPER }}"
-            export JWT_SECRET="${{ secrets.JWT_SECRET }}"
-            export FRONTEND_URL="${{ secrets.FRONTEND_URL }}"
-            export RESEND_API_KEY="${{ secrets.RESEND_API_KEY }}"
-            export RESEND_FROM_EMAIL="${{ secrets.RESEND_FROM_EMAIL }}"
+            set -a
+            source /home/chima_nigerian/Clinical-be/.env.production
+            set +a
 
             uv run alembic upgrade head
 
@@ -99,4 +100,11 @@ jobs:
             pm2 reload ecosystem.config.js --only production,celery-worker-production,flower-production
 
             pm2 save
-            echo "✅ Production deployment complete!"
+
+            echo "⏳ Waiting for API to be ready..."
+            for i in $(seq 1 15); do
+              curl -sf http://localhost:8001/api/v1/health && echo "✅ Production deployment complete!" && exit 0
+              sleep 2
+            done
+            echo "❌ Health check failed after deployment!"
+            exit 1
