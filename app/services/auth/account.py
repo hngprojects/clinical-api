@@ -3,7 +3,13 @@ from datetime import datetime, timezone
 from sqlalchemy.exc import IntegrityError
 
 from app.core.config import get_settings
-from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError, UnauthorizedError
+from app.core.exceptions import (
+	BadRequestError,
+	ConflictError,
+	ForbiddenError,
+	NotFoundError,
+	UnauthorizedError,
+)
 from app.core.security import hash_password, verify_password
 from app.models.otp import OtpPurpose
 from app.models.user import User, UserRole
@@ -156,6 +162,68 @@ async def resend_otp(
 	await user_repo.refresh(user)
 
 	return user, code
+
+
+async def start_email_change(
+	user_repo: UserRepository,
+	otp_repo: OtpRepository,
+	*,
+	user: User,
+	new_email: str,
+	password: str,
+) -> tuple[User, str]:
+	"""Start an authenticated email change and return the generated OTP code."""
+	if not user.password_hash or not verify_password(password, user.password_hash):
+		raise BadRequestError("Incorrect password")
+
+	normalized_email = new_email.strip().lower()
+	existing = await user_repo.get_by_email(normalized_email)
+	if existing is not None and existing.id != user.id:
+		raise ConflictError("Email already in use")
+
+	_, code = await create_otp_for_user(otp_repo, user_id=user.id, purpose=OtpPurpose.EMAIL_VERIFICATION)
+	user.pending_email = normalized_email
+	user.email_change_token = code
+
+	await user_repo.commit()
+	await user_repo.refresh(user)
+	return user, code
+
+
+async def verify_email_change(
+	user_repo: UserRepository,
+	otp_repo: OtpRepository,
+	*,
+	user: User,
+	token: str,
+) -> User:
+	"""Verify pending email change token and promote pending email to primary email."""
+	if not user.pending_email or not user.email_change_token or user.email_change_token != token:
+		raise BadRequestError("Invalid or expired token")
+
+	try:
+		await verify_otp_for_user(
+			otp_repo,
+			user_id=user.id,
+			purpose=OtpPurpose.EMAIL_VERIFICATION,
+			code=token,
+		)
+	except OtpVerificationError as exc:
+		await user_repo.commit()
+		raise BadRequestError("Invalid or expired token") from exc
+
+	user.email = user.pending_email
+	user.pending_email = None
+	user.email_change_token = None
+
+	try:
+		await user_repo.commit()
+	except IntegrityError as exc:
+		await user_repo.rollback()
+		raise ConflictError("Email already in use") from exc
+
+	await user_repo.refresh(user)
+	return user
 
 
 def otp_ttl_seconds() -> int:

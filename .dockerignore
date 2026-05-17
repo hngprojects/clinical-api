@@ -44,3 +44,6 @@ coverage/
 # Ignore test results
 test-output/
 reports/
+
+# Local changelog notes (keep build contexts slim)
+new_changes_*.md
