@@ -69,7 +69,11 @@ class Settings(BaseSettings):
 
 	FRONTEND_URL: str = ""
 
-	CHUNK_SIZE: int = 1024 * 1024  # 1MB processed per write
+	MINIO_URL: str
+	MINIO_USERNAME: str
+	MINIO_PASSWORD: str
+	MINIO_BUCKET_NAME: str
+	MINIO_SECURE: bool = False
 
 	@field_validator("RESEND_FROM_EMAIL", mode="after")
 	@classmethod

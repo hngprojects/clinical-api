@@ -9,8 +9,8 @@ class MedicalUploadRepository:
 	def __init__(self, session: AsyncSession):
 		self._session = session
 
-	def add(self):
-		self._session.add()
+	def add(self, medical_upload: MedicalUpload):
+		self._session.add(medical_upload)
 
 	async def commit(self):
 		await self._session.commit()
