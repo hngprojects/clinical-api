@@ -145,16 +145,21 @@ async def test_other_user_cannot_delete_returns_403(client, test_user, auth_head
 
 	async with AsyncSessionLocal() as session:
 		assert await session.get(MedicalCase, case_id) is not None
-	
-	# Verify that the case and its children still exist
+
 	assert await _count_related(case_id) == (1, 1, 1, 1)
 
 	async with AsyncSessionLocal() as session:
 		await session.delete(other_user)
 		await session.commit()
-	
-	# Verify that the case and its children are deleted
-	assert await _count_related(case_id) == (0, 0, 0, 0)
+
+	assert await _count_related(case_id) == (1, 1, 1, 1)
+
+	async with AsyncSessionLocal() as session:
+		case = await session.get(MedicalCase, case_id)
+		if case is not None:
+			await session.delete(case)
+			await session.commit()
+
 
 async def test_delete_missing_case_returns_404(client, auth_headers):
 	fake_id = str(uuid.uuid4())
