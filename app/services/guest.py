@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 import redis.asyncio as aioredis
 
 from app.core.config import get_settings
+from app.core.exceptions import UnauthorizedError
 from app.core.redis_client import get_redis
 
 GUEST_SESSION_KEY_PREFIX = "guest:session:"
@@ -25,6 +26,22 @@ class GuestSessionInfo:
 
 def _session_key(session_id: str) -> str:
 	return f"{GUEST_SESSION_KEY_PREFIX}{session_id}"
+
+
+async def resolve_guest_session_id(
+	session_id: str | None,
+	*,
+	redis: aioredis.Redis | None = None,
+) -> str:
+	"""Validate guest session in Redis and return a canonical UUID string."""
+	if not session_id or not session_id.strip():
+		raise UnauthorizedError("Missing guest session. Provide X-Guest-Session-Id or guest_session_id.")
+	normalized = normalize_guest_session_id(session_id)
+	if normalized is None:
+		raise UnauthorizedError("Invalid guest session id.")
+	if not await validate_guest_session(normalized, redis=redis):
+		raise UnauthorizedError("Guest session expired or invalid.")
+	return normalized
 
 
 def normalize_guest_session_id(session_id: str) -> str | None:

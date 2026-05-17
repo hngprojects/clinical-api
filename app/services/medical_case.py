@@ -13,6 +13,7 @@ from app.repositories.chat import ChatRepository
 from app.repositories.lab_result import LabResultRepository
 from app.repositories.medical_case import MedicalCaseRepository
 from app.schemas.medical_case import MedicalCaseCreate, MedicalCaseUpdate
+from app.services.guest import resolve_guest_session_id, touch_guest_session
 
 
 @dataclass(frozen=True)
@@ -67,10 +68,16 @@ async def get_case(
 	case = await case_repo.get_by_id(case_id)
 	if case is None:
 		raise NotFoundError("Medical case not found.")
-	if user is not None and case.user_id != user.id:
+
+	if user is not None:
+		if case.user_id != user.id:
+			raise ForbiddenError("You do not have access to this case.")
+		return case
+
+	valid_guest_id = await resolve_guest_session_id(guest_session_id)
+	if case.guest_session_id != valid_guest_id:
 		raise ForbiddenError("You do not have access to this case.")
-	if user is None and guest_session_id is not None and case.guest_session_id != guest_session_id:
-		raise ForbiddenError("You do not have access to this case.")
+	await touch_guest_session(valid_guest_id)
 	return case
 
 
@@ -85,8 +92,6 @@ async def get_case_full(
 	guest_session_id: str | None = None,
 ) -> CaseFullDetail:
 	"""Load case with all lab results, latest interpretation, and full chat history."""
-	if user is None and guest_session_id is None:
-		raise ForbiddenError("You must be authenticated to access this case.")
 	if user is not None and guest_session_id is not None:
 		raise ForbiddenError("You cannot access a case with both user and guest session.")
 	case = await get_case(case_repo, case_id, user=user, guest_session_id=guest_session_id)

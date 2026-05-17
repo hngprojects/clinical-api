@@ -23,6 +23,8 @@ router = APIRouter(tags=["lab-results"])
 )
 async def upload(
 	payload: UploadRequest,
+	current_user: OptionalUser,
+	guest_session_id: GuestSessionId,
 	lab_repo: LabResultRepo,
 	case_repo: MedicalCaseRepo,
 ) -> SuccessResponse[UploadResponse]:
@@ -33,7 +35,13 @@ async def upload(
 	sends one request and polls GET /cases/{case_id}/interpretations/latest
 	for the result.
 	"""
-	case, lab_result = await upload_lab_result(lab_repo, case_repo, payload, None)
+	case, lab_result = await upload_lab_result(
+		lab_repo,
+		case_repo,
+		payload,
+		current_user,
+		header_guest_session_id=guest_session_id,
+	)
 	return SuccessResponse(
 		message="Upload received. Processing started.",
 		data=UploadResponse(

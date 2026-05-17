@@ -2,7 +2,7 @@ from uuid import UUID
 
 from sqlalchemy import func, select
 
-from app.models.chat import Chat
+from app.models.chat import Chat, SenderType
 from app.repositories.base import BaseRepository
 
 
@@ -30,6 +30,17 @@ class ChatRepository(BaseRepository[Chat]):
 			select(func.count()).select_from(Chat).where(Chat.medical_case_id == medical_case_id)
 		)
 		return result.scalar_one()
+
+	async def count_patient_messages_by_case(self, medical_case_id: UUID) -> int:
+		result = await self._session.execute(
+			select(func.count())
+			.select_from(Chat)
+			.where(
+				Chat.medical_case_id == medical_case_id,
+				Chat.sender_type == SenderType.PATIENT,
+			)
+		)
+		return int(result.scalar_one())
 
 	async def list_by_user(
 		self,

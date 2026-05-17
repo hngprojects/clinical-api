@@ -1,11 +1,13 @@
 from uuid import UUID
 
+from app.core.config import get_settings
 from app.core.exceptions import ForbiddenError, NotFoundError
-from app.models.chat import Chat
+from app.models.chat import Chat, SenderType
 from app.models.user import User
 from app.repositories.chat import ChatRepository
 from app.repositories.medical_case import MedicalCaseRepository
 from app.schemas.chat import ChatCreate
+from app.services.medical_case import get_case
 
 
 async def send_message(
@@ -17,13 +19,17 @@ async def send_message(
 	guest_session_id: str | None = None,
 ) -> Chat:
 	"""Create a new chat message within a medical case."""
-	case = await case_repo.get_by_id(payload.medical_case_id)
-	if case is None:
-		raise NotFoundError("Medical case not found.")
-	if user is not None and case.user_id != user.id:
-		raise ForbiddenError("You do not have access to this case.")
-	if user is None and guest_session_id is not None and case.guest_session_id != guest_session_id:
-		raise ForbiddenError("You do not have access to this case.")
+	case = await get_case(
+		case_repo,
+		payload.medical_case_id,
+		user=user,
+		guest_session_id=guest_session_id,
+	)
+
+	if user is None and payload.sender_type == SenderType.PATIENT:
+		patient_messages = await chat_repo.count_patient_messages_by_case(case.id)
+		if patient_messages >= get_settings().GUEST_CHAT_MESSAGE_LIMIT:
+			raise ForbiddenError("Guest message limit reached. Please sign up to continue chatting.")
 
 	message = Chat(
 		user_id=payload.user_id or (user.id if user else None),
