@@ -5,6 +5,7 @@ from app.api.v1.endpoints import (
 	auth,
 	chat,
 	contact,
+	guest,
 	health,
 	lab_result,
 	medical_case,
@@ -16,6 +17,7 @@ from app.api.v1.endpoints import (
 api_router = APIRouter()
 api_router.include_router(health.router, tags=["health"])
 api_router.include_router(auth.router)
+api_router.include_router(guest.router)
 api_router.include_router(medical_case.router)
 api_router.include_router(lab_result.router)
 api_router.include_router(ai_interpretation.router)

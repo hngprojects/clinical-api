@@ -9,34 +9,13 @@ import pytest
 from app.services.guest import (
 	GUEST_SESSION_KEY_PREFIX,
 	create_guest_session,
+	get_guest_session,
 	normalize_guest_session_id,
 	revoke_guest_session,
 	touch_guest_session,
 	validate_guest_session,
 )
-
-
-class FakeRedis:
-	"""Minimal async Redis stand-in for guest session tests."""
-
-	def __init__(self) -> None:
-		self._data: dict[str, str] = {}
-
-	async def set(self, key: str, value: str, ex: int | None = None) -> bool:  # noqa: ARG002
-		self._data[key] = value
-		return True
-
-	async def exists(self, key: str) -> int:
-		return 1 if key in self._data else 0
-
-	async def expire(self, key: str, ttl: int) -> bool:  # noqa: ARG002
-		return key in self._data
-
-	async def delete(self, key: str) -> int:
-		if key in self._data:
-			del self._data[key]
-			return 1
-		return 0
+from tests.fakes.redis import FakeRedis
 
 
 @pytest.fixture
@@ -89,6 +68,22 @@ async def test_revoke_guest_session_removes_key(fake_redis: FakeRedis) -> None:
 
 	assert await revoke_guest_session(info.guest_session_id, redis=fake_redis) is True
 	assert await validate_guest_session(info.guest_session_id, redis=fake_redis) is False
+
+
+@pytest.mark.asyncio
+async def test_get_guest_session_returns_ttl(fake_redis: FakeRedis) -> None:
+	info = await create_guest_session(redis=fake_redis)
+
+	session = await get_guest_session(info.guest_session_id, redis=fake_redis)
+
+	assert session is not None
+	assert session.guest_session_id == info.guest_session_id
+	assert session.expires_in == 3600
+
+
+@pytest.mark.asyncio
+async def test_get_guest_session_none_when_missing(fake_redis: FakeRedis) -> None:
+	assert await get_guest_session(str(uuid.uuid4()), redis=fake_redis) is None
 
 
 @pytest.mark.asyncio

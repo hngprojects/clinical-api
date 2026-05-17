@@ -51,6 +51,25 @@ async def create_guest_session(
 	return GuestSessionInfo(guest_session_id=session_id, expires_in=ttl)
 
 
+async def get_guest_session(
+	session_id: str,
+	*,
+	redis: aioredis.Redis | None = None,
+) -> GuestSessionInfo | None:
+	"""Return session metadata when the id is valid and still present in Redis."""
+	normalized = normalize_guest_session_id(session_id)
+	if normalized is None:
+		return None
+	client = redis if redis is not None else await get_redis()
+	key = _session_key(normalized)
+	if not await client.exists(key):
+		return None
+	ttl = await client.ttl(key)
+	if ttl is None or ttl < 0:
+		return None
+	return GuestSessionInfo(guest_session_id=normalized, expires_in=int(ttl))
+
+
 async def validate_guest_session(
 	session_id: str,
 	*,
