@@ -179,4 +179,5 @@ jeff.py
 public/
 
 docker-compose.yml
-.env
+docker/
+new_changes_full_case_detail_endpoint.md
