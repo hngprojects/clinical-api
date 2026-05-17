@@ -183,4 +183,3 @@ new_changes_*.md
 
 docker-compose.yml
 docker/
-new_changes_full_case_detail_endpoint.md
