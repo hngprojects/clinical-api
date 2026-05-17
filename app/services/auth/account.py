@@ -22,7 +22,12 @@ from app.services.auth.otp import (
 	create_otp_for_user,
 	verify_otp_for_user,
 )
-from app.services.auth.tokens import create_access_token, create_refresh_token, decode_access_token, revoke_refresh_token
+from app.services.auth.tokens import (
+	create_access_token,
+	create_refresh_token,
+	decode_access_token,
+	revoke_refresh_token,
+)
 
 
 async def signup_user(
