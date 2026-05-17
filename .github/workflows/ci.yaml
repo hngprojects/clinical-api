@@ -101,6 +101,10 @@ jobs:
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5433/test_db
           JWT_SECRET: ci-test-jwt-secret-not-for-production
           OTP_PEPPER: ci-test-otp-pepper-not-for-production
+          MINIO_URL: ""
+          MINIO_USERNAME: ""
+          MINIO_PASSWORD: ""
+          MINIO_BUCKET_NAME: ""
         run: uv run alembic upgrade head
 
       - name: Start API and run tests
