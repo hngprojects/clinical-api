@@ -33,8 +33,8 @@ The MVP focuses on one core problem: people receive laboratory results but canno
 ## 5. High-Level Logic & Behaviour
 - **Upload**: Accepted: JPG, PNG, PDF. Unreadable/unsupported file → error state + reupload. OCR timeout at 15s → error + reupload.
 - **AI Engine**: Classifies each value as Normal / Caution / Abnormal against reference. Disclaimer appended automatically. AI error → fallback message + retry.
-- **Guest Flow**: Upload-to-interpretation without account. The session expires in 1hr. Sign-up prompt on: After 3 messages; chat history migration is automatic on signup.
-- **Auth & Session**: OTP valid 15 mins, single-use. Password reset link expires in 1hr. Google OAuth via OAuth 2.0. Tokens stored securely on device.
+- **Guest Flow**: Call `POST /api/v1/guest/sessions` for a `guest_session_id` (Redis TTL, default 1 hour). Send it as `X-Guest-Session-Id` on upload and case routes, or in the upload body as `guest_se
+- **Auth & Session**: JWT access token in `Authorization: Bearer` header; refresh token in `refresh_token` HttpOnly cookie. `CurrentUser` routes require a verified email. `OptionalUser` routes accept 
 - **Notifications**: Push sent on interpretation complete. Suppressed if the user is actively on the result screen. Users who opt out can still access results in-app.
 
 ## 6. Acceptance Criteria

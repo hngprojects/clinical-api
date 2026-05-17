@@ -121,6 +121,21 @@ async def list_cases_for_user(
 	return cases, total
 
 
+async def list_cases_for_guest_session(
+	case_repo: MedicalCaseRepository,
+	guest_session_id: str,
+	*,
+	offset: int = 0,
+	limit: int = 50,
+) -> tuple[list[MedicalCase], int]:
+	"""Return paginated cases owned by a valid guest session."""
+	valid_guest_id = await resolve_guest_session_id(guest_session_id)
+	cases = await case_repo.get_by_guest_session(valid_guest_id, offset=offset, limit=limit)
+	total = await case_repo.count_by_guest_session(valid_guest_id)
+	await touch_guest_session(valid_guest_id)
+	return cases, total
+
+
 async def update_case(
 	case_repo: MedicalCaseRepository,
 	case_id: UUID,
