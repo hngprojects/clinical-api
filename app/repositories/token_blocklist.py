@@ -22,6 +22,8 @@ class TokenBlocklistRepository:
 	) -> None:
 		entry = TokenBlocklist(jti=jti, user_id=user_id, expires_at=expires_at)
 		self._session.add(entry)
+
+	async def commit(self) -> None:
 		await self._session.commit()
 
 	async def is_revoked(self, jti: str) -> bool:

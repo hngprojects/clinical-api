@@ -200,6 +200,59 @@ async def test_update_password_unauthenticated_returns_401(client) -> None:
     assert response.status_code == 401
 
 
+async def test_update_password_invalidates_access_token(client) -> None:
+    user = await _create_user(
+        email=f"pwd_{uuid.uuid4().hex[:8]}@clinsights.dev",
+        password="OldPassword1!",
+    )
+    try:
+        headers, jti = _auth_headers_with_token(user.id)
+        response = await client.patch(
+            f"{API}/users/me/password",
+            json={"current_password": "OldPassword1!", "new_password": "NewPassword2!"},
+            headers=headers,
+        )
+        assert response.status_code == 200
+
+        assert await _is_token_blocklisted(jti)
+
+        me_resp = await client.get(f"{API}/auth/me", headers=headers)
+        assert me_resp.status_code == 401
+    finally:
+        await _delete_user(user.id)
+
+
+async def test_update_password_blocklists_refresh_token(client) -> None:
+    import jwt as pyjwt
+
+    from app.core.config import get_settings
+    from app.services.auth.tokens import create_refresh_token
+
+    user = await _create_user(
+        email=f"pwd_{uuid.uuid4().hex[:8]}@clinsights.dev",
+        password="OldPassword1!",
+    )
+    try:
+        headers, _ = _auth_headers_with_token(user.id)
+        refresh_token = await create_refresh_token(user.id)
+        settings = get_settings()
+        refresh_payload = pyjwt.decode(
+            refresh_token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM]
+        )
+        refresh_jti = refresh_payload["jti"]
+
+        response = await client.patch(
+            f"{API}/users/me/password",
+            json={"current_password": "OldPassword1!", "new_password": "NewPassword2!"},
+            headers=headers,
+            cookies={"refresh_token": refresh_token},
+        )
+        assert response.status_code == 200
+        assert await _is_token_blocklisted(refresh_jti)
+    finally:
+        await _delete_user(user.id)
+
+
 # ---------------------------------------------------------------------------
 # DELETE /users/me — account deletion
 # ---------------------------------------------------------------------------
@@ -242,3 +295,27 @@ async def test_delete_account_token_rejected_on_subsequent_request(client) -> No
 async def test_delete_account_unauthenticated_returns_401(client) -> None:
     response = await client.delete(f"{API}/users/me")
     assert response.status_code == 401
+
+
+async def test_delete_account_blocklists_refresh_token(client) -> None:
+    import jwt as pyjwt
+
+    from app.core.config import get_settings
+    from app.services.auth.tokens import create_refresh_token
+
+    user = await _create_user(email=f"del_{uuid.uuid4().hex[:8]}@clinsights.dev")
+    headers, _ = _auth_headers_with_token(user.id)
+    refresh_token = await create_refresh_token(user.id)
+    settings = get_settings()
+    refresh_payload = pyjwt.decode(
+        refresh_token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM]
+    )
+    refresh_jti = refresh_payload["jti"]
+
+    response = await client.delete(
+        f"{API}/users/me",
+        headers=headers,
+        cookies={"refresh_token": refresh_token},
+    )
+    assert response.status_code == 200
+    assert await _is_token_blocklisted(refresh_jti)

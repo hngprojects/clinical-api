@@ -1,8 +1,7 @@
 import logging
-from datetime import datetime, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Cookie, Depends, status
 from fastapi.security import HTTPAuthorizationCredentials
 
 from app.api.deps import CurrentUser, OtpRepo, TokenBlocklistRepo, UserRepo, bearer_scheme
@@ -22,7 +21,6 @@ from app.services.auth import (
 	update_profile,
 	verify_email_change,
 )
-from app.services.auth.tokens import decode_access_token
 from app.tasks.emails import send_otp_email_task
 
 logger = logging.getLogger(__name__)
@@ -89,6 +87,8 @@ async def update_profile_endpoint(
 		first_name=payload.first_name,
 		last_name=payload.last_name,
 	)
+	await user_repo.commit()
+	await user_repo.refresh(updated_user)
 	return SuccessResponse(message="Profile updated successfully", data=UserResponse.model_validate(updated_user))
 
 
@@ -97,17 +97,25 @@ async def update_password_endpoint(
 	payload: PasswordUpdateRequest,
 	current_user: CurrentUser,
 	user_repo: UserRepo,
+	blocklist_repo: TokenBlocklistRepo,
+	credentials: Annotated[HTTPAuthorizationCredentials, Depends(bearer_scheme)],
+	refresh_token: Annotated[str | None, Cookie()] = None,
 ) -> SuccessResponse:
 	"""Change the authenticated user's password.
 
-	Returns 400 if the current password does not match.
+	Returns 400 if the current password does not match. Both the active access
+	token and refresh token are revoked so all existing sessions are invalidated.
 	"""
 	await update_password(
 		user_repo,
+		blocklist_repo,
 		user=current_user,
 		current_password=payload.current_password,
 		new_password=payload.new_password,
+		access_token=credentials.credentials,
+		refresh_token=refresh_token,
 	)
+	await user_repo.commit()
 	return SuccessResponse(message="Password updated successfully")
 
 
@@ -117,21 +125,18 @@ async def delete_account_endpoint(
 	user_repo: UserRepo,
 	blocklist_repo: TokenBlocklistRepo,
 	credentials: Annotated[HTTPAuthorizationCredentials, Depends(bearer_scheme)],
+	refresh_token: Annotated[str | None, Cookie()] = None,
 ) -> SuccessResponse:
 	"""Permanently delete the authenticated user's account.
 
-	The current access token is blocklisted before deletion so any in-flight
-	request using the same token is rejected immediately.
+	Tokens are revoked and the user row is removed in a single atomic commit.
 	"""
-	access_token_payload = decode_access_token(credentials.credentials)
-	jti: str = access_token_payload["jti"]
-	expires_at = datetime.fromtimestamp(access_token_payload["exp"], tz=timezone.utc)
-
 	await delete_account(
 		user_repo,
 		blocklist_repo,
 		user=current_user,
-		jti=jti,
-		expires_at=expires_at,
+		access_token=credentials.credentials,
+		refresh_token=refresh_token,
 	)
+	await user_repo.commit()
 	return SuccessResponse(message="Account deleted successfully")

@@ -292,6 +292,7 @@ async def logout(
 		expires_at=access_token_expires_at,
 	)
 	await revoke_refresh_token(refresh_token, blocklist_repo)
+	await blocklist_repo.commit()
 	return SuccessResponse(message="Logged out successfully.")
 
 
@@ -356,6 +357,7 @@ async def refresh(
 	if await is_token_revoked(blocklist_repo, refresh_token_jti):
 		raise UnauthorizedError("Refresh token has been revoked")
 	await revoke_refresh_token(refresh_token, blocklist_repo)
+	await blocklist_repo.commit()
 	tokens = await rotate_all_tokens(user_repo=user_repo, refresh_token=refresh_token)
 
 	_set_refresh_cookie(response, tokens["refresh_token"])

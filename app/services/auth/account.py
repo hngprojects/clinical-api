@@ -22,7 +22,7 @@ from app.services.auth.otp import (
 	create_otp_for_user,
 	verify_otp_for_user,
 )
-from app.services.auth.tokens import create_access_token, create_refresh_token
+from app.services.auth.tokens import create_access_token, create_refresh_token, decode_access_token, revoke_refresh_token
 
 
 async def signup_user(
@@ -249,26 +249,34 @@ async def update_profile(
 		if not normalized:
 			raise BadRequestError("Last name cannot be blank.")
 		user.last_name = normalized
-	await user_repo.commit()
-	await user_repo.refresh(user)
 	return user
 
 
 async def update_password(
 	user_repo: UserRepository,
+	blocklist_repo: TokenBlocklistRepository,
 	*,
 	user: User,
 	current_password: str,
 	new_password: str,
+	access_token: str,
+	refresh_token: str | None,
 ) -> None:
 	"""Verify the current password then replace it with a new bcrypt hash.
 
 	Raises BadRequestError if the current password is wrong.
+	Revokes the refresh token first, then the access token, so all active
+	sessions are immediately invalidated after the password change.
 	"""
 	if not user.password_hash or not verify_password(current_password, user.password_hash):
 		raise BadRequestError("Incorrect password")
 	user.password_hash = hash_password(new_password)
-	await user_repo.commit()
+	if refresh_token:
+		await revoke_refresh_token(refresh_token, blocklist_repo)
+	payload = decode_access_token(access_token)
+	jti: str = payload["jti"]
+	expires_at = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
+	await blocklist_repo.revoke(jti=jti, user_id=user.id, expires_at=expires_at)
 
 
 async def delete_account(
@@ -276,15 +284,19 @@ async def delete_account(
 	blocklist_repo: TokenBlocklistRepository,
 	*,
 	user: User,
-	jti: str,
-	expires_at: datetime,
+	access_token: str,
+	refresh_token: str | None,
 ) -> None:
-	"""Revoke the active access token then permanently delete the user.
+	"""Revoke active tokens then permanently delete the user.
 
-	The token is blocklisted before the row is removed so any concurrent
-	request carrying the same JWT is rejected even if it arrives between
-	the two writes.
+	Refresh token is revoked first (if present), then the access token, then
+	the user row is removed. The endpoint owns the commit so all three writes
+	land atomically.
 	"""
+	if refresh_token:
+		await revoke_refresh_token(refresh_token, blocklist_repo)
+	payload = decode_access_token(access_token)
+	jti: str = payload["jti"]
+	expires_at = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
 	await blocklist_repo.revoke(jti=jti, user_id=user.id, expires_at=expires_at)
 	await user_repo.delete(user)
-	await user_repo.commit()
