@@ -1,11 +1,28 @@
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import UUID
 
 from app.core.exceptions import ForbiddenError, NotFoundError
+from app.models.ai_interpretation import AIInterpretation
+from app.models.chat import Chat
+from app.models.lab_result import LabResult
 from app.models.medical_case import MedicalCase, MedicalCaseStatus
 from app.models.user import User
+from app.repositories.ai_interpretation import AIInterpretationRepository
+from app.repositories.chat import ChatRepository
+from app.repositories.lab_result import LabResultRepository
 from app.repositories.medical_case import MedicalCaseRepository
 from app.schemas.medical_case import MedicalCaseCreate, MedicalCaseUpdate
+
+
+@dataclass(frozen=True)
+class CaseFullDetail:
+	"""Case row plus related entities for history/detail views."""
+
+	case: MedicalCase
+	lab_results: list[LabResult]
+	interpretation: AIInterpretation | None
+	chats: list[Chat]
 
 
 async def create_case(
@@ -55,6 +72,35 @@ async def get_case(
 	if user is None and guest_session_id is not None and case.guest_session_id != guest_session_id:
 		raise ForbiddenError("You do not have access to this case.")
 	return case
+
+
+async def get_case_full(
+	case_repo: MedicalCaseRepository,
+	lab_repo: LabResultRepository,
+	interp_repo: AIInterpretationRepository,
+	chat_repo: ChatRepository,
+	case_id: UUID,
+	*,
+	user: User | None = None,
+	guest_session_id: str | None = None,
+) -> CaseFullDetail:
+	"""Load case with all lab results, latest interpretation, and full chat history."""
+	if user is None and guest_session_id is None:
+		raise ForbiddenError("You must be authenticated to access this case.")
+	if user is not None and guest_session_id is not None:
+		raise ForbiddenError("You cannot access a case with both user and guest session.")
+	case = await get_case(case_repo, case_id, user=user, guest_session_id=guest_session_id)
+	lab_count = await lab_repo.count_by_case(case_id)
+	lab_results = await lab_repo.list_by_case(case_id, offset=0, limit=lab_count) if lab_count else []
+	interpretation = await interp_repo.get_latest_for_case(case_id)
+	chat_count = await chat_repo.count_by_case(case_id)
+	chats = await chat_repo.list_by_case(case_id, offset=0, limit=chat_count) if chat_count else []
+	return CaseFullDetail(
+		case=case,
+		lab_results=lab_results,
+		interpretation=interpretation,
+		chats=chats,
+	)
 
 
 async def list_cases_for_user(

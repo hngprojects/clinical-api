@@ -17,7 +17,13 @@ from app.schemas.auth import (
 )
 from app.schemas.chat import ChatBase, ChatCreate, ChatResponse
 from app.schemas.lab_result import LabResultBase, LabResultCreate, LabResultResponse, LabResultUpdate
-from app.schemas.medical_case import MedicalCaseBase, MedicalCaseCreate, MedicalCaseResponse, MedicalCaseUpdate
+from app.schemas.medical_case import (
+	MedicalCaseBase,
+	MedicalCaseCreate,
+	MedicalCaseDetailResponse,
+	MedicalCaseResponse,
+	MedicalCaseUpdate,
+)
 from app.schemas.notification import NotificationBase, NotificationCreate, NotificationResponse, NotificationUpdate
 from app.schemas.user import GoogleUserCreate, UserBase, UserCreate, UserResponse, UserUpdate
 from app.schemas.waitlist import WaitlistCreate, WaitlistResponse
@@ -44,6 +50,7 @@ __all__ = [
 	"MedicalCaseCreate",
 	"MedicalCaseUpdate",
 	"MedicalCaseResponse",
+	"MedicalCaseDetailResponse",
 	# LabResult
 	"LabResultBase",
 	"LabResultCreate",

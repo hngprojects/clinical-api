@@ -2,14 +2,26 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query, status
 
-from app.api.deps import CurrentUser, GuestSessionId, MedicalCaseRepo, OptionalUser
+from app.api.deps import (
+	AIInterpretationRepo,
+	ChatRepo,
+	CurrentUser,
+	GuestSessionId,
+	LabResultRepo,
+	MedicalCaseRepo,
+	OptionalUser,
+)
 from app.core.responses import SuccessResponse
-from app.schemas.medical_case import MedicalCaseResponse
+from app.schemas.ai_interpretation import AIInterpretationResponse
+from app.schemas.chat import ChatResponse
+from app.schemas.lab_result import LabResultResponse
+from app.schemas.medical_case import MedicalCaseDetailResponse, MedicalCaseResponse
 from app.services.medical_case import (
 	complete_case,
 	create_case_for_user,
 	delete_owned_case,
 	get_case,
+	get_case_full,
 	list_cases_for_user,
 )
 
@@ -53,6 +65,42 @@ async def list_mine(
 	return SuccessResponse(
 		message="OK",
 		data=[MedicalCaseResponse.model_validate(c) for c in cases],
+	)
+
+
+@router.get(
+	"/{case_id}/full",
+	response_model=SuccessResponse[MedicalCaseDetailResponse],
+)
+async def retrieve_full(
+	case_id: UUID,
+	current_user: OptionalUser,
+	guest_session_id: GuestSessionId,
+	case_repo: MedicalCaseRepo,
+	lab_repo: LabResultRepo,
+	interp_repo: AIInterpretationRepo,
+	chat_repo: ChatRepo,
+) -> SuccessResponse[MedicalCaseDetailResponse]:
+	"""Return case, lab results, latest interpretation, and chat in one response."""
+	detail = await get_case_full(
+		case_repo,
+		lab_repo,
+		interp_repo,
+		chat_repo,
+		case_id,
+		user=current_user,
+		guest_session_id=guest_session_id,
+	)
+	return SuccessResponse(
+		message="OK",
+		data=MedicalCaseDetailResponse(
+			case=MedicalCaseResponse.model_validate(detail.case),
+			lab_results=[LabResultResponse.model_validate(lr) for lr in detail.lab_results],
+			interpretation=AIInterpretationResponse.model_validate(detail.interpretation)
+			if detail.interpretation is not None
+			else None,
+			chats=[ChatResponse.model_validate(c) for c in detail.chats],
+		),
 	)
 
 
