@@ -40,6 +40,7 @@ class VerifyOtpRequest(BaseModel):
 
 	email: EmailStr
 	code: str = Field(min_length=4, max_length=12)
+	guest_session_id: str | None = None
 
 
 class ResendOtpRequest(BaseModel):

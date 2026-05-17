@@ -6,12 +6,15 @@ import json
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from uuid import UUID
 
 import redis.asyncio as aioredis
 
 from app.core.config import get_settings
 from app.core.exceptions import UnauthorizedError
 from app.core.redis_client import get_redis
+from app.repositories.chat import ChatRepository
+from app.repositories.medical_case import MedicalCaseRepository
 
 GUEST_SESSION_KEY_PREFIX = "guest:session:"
 
@@ -22,6 +25,14 @@ class GuestSessionInfo:
 
 	guest_session_id: str
 	expires_in: int
+
+
+@dataclass(frozen=True)
+class GuestMigrationResult:
+	"""Counts from linking guest-owned rows to a user account."""
+
+	cases_migrated: int
+	chats_updated: int
 
 
 def _session_key(session_id: str) -> str:
@@ -129,3 +140,33 @@ async def revoke_guest_session(
 	client = redis if redis is not None else await get_redis()
 	deleted = await client.delete(_session_key(normalized))
 	return deleted > 0
+
+
+async def migrate_guest_session_to_user(
+	case_repo: MedicalCaseRepository,
+	chat_repo: ChatRepository,
+	*,
+	guest_session_id: str,
+	user_id: UUID,
+	redis: aioredis.Redis | None = None,
+) -> GuestMigrationResult:
+	"""Attach guest cases and orphan chats to the authenticated user; clear guest session."""
+	normalized = normalize_guest_session_id(guest_session_id)
+	if normalized is None:
+		return GuestMigrationResult(cases_migrated=0, chats_updated=0)
+
+	cases = await case_repo.get_by_guest_session(normalized, offset=0, limit=500)
+	if not cases:
+		await revoke_guest_session(normalized, redis=redis)
+		return GuestMigrationResult(cases_migrated=0, chats_updated=0)
+
+	case_ids: list[UUID] = []
+	for case in cases:
+		case.user_id = user_id
+		case.guest_session_id = None
+		case_ids.append(case.id)
+
+	chats_updated = await chat_repo.assign_user_to_case_messages(case_ids, user_id)
+	await case_repo.commit()
+	await revoke_guest_session(normalized, redis=redis)
+	return GuestMigrationResult(cases_migrated=len(cases), chats_updated=chats_updated)

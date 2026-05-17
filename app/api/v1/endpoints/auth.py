@@ -3,13 +3,16 @@ from datetime import datetime, timezone
 from typing import Annotated
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Cookie, Depends, status
+from fastapi import APIRouter, Cookie, Depends, Query, status
 from fastapi.responses import RedirectResponse, Response
 from fastapi.security import HTTPAuthorizationCredentials
 
 from app.api.deps import (
+	ChatRepo,
 	CurrentUser,
 	DBSession,
+	GuestSessionId,
+	MedicalCaseRepo,
 	OtpRepo,
 	PasswordResetRepo,
 	TokenBlocklistRepo,
@@ -47,6 +50,7 @@ from app.services.auth import (
 	signup_user,
 )
 from app.services.auth.blocklist import is_token_revoked, revoke_token
+from app.services.guest import migrate_guest_session_to_user, normalize_guest_session_id
 from app.services.oauth import (
 	exchange_google_code,
 	fetch_google_user_info,
@@ -151,8 +155,11 @@ async def login(
 )
 async def verify_otp(
 	payload: VerifyOtpRequest,
+	guest_session_id: GuestSessionId,
 	user_repo: UserRepo,
 	otp_repo: OtpRepo,
+	case_repo: MedicalCaseRepo,
+	chat_repo: ChatRepo,
 	response: Response,
 ) -> SuccessResponse[TokenResponse]:
 	"""Verify the email-verification OTP sent after signup."""
@@ -162,6 +169,14 @@ async def verify_otp(
 		email=payload.email,
 		code=payload.code,
 	)
+	migration_guest_id = payload.guest_session_id or guest_session_id
+	if migration_guest_id:
+		await migrate_guest_session_to_user(
+			case_repo,
+			chat_repo,
+			guest_session_id=migration_guest_id,
+			user_id=user.id,
+		)
 	_set_refresh_cookie(response, refresh_token)
 	return SuccessResponse(
 		message="Email verified. Welcome!",
@@ -297,7 +312,9 @@ async def logout(
 
 # Google OAuth
 @router.get("/google")
-async def google_login() -> RedirectResponse:
+async def google_login(
+	guest_session_id: str | None = Query(None, description="Guest session to migrate after OAuth"),
+) -> RedirectResponse:
 	"""Redirect to Google's OAuth consent screen."""
 	settings = get_settings()
 	query_params = urlencode(
@@ -306,6 +323,7 @@ async def google_login() -> RedirectResponse:
 			"redirect_uri": settings.GOOGLE_REDIRECT_URI,
 			"response_type": "code",
 			"scope": "openid email profile",
+			"state": guest_session_id or "",
 		}
 	)
 	google_auth_url = f"https://accounts.google.com/o/oauth2/v2/auth?{query_params}"
@@ -316,7 +334,10 @@ async def google_login() -> RedirectResponse:
 async def google_callback(
 	code: str,
 	user_repo: UserRepo,
+	case_repo: MedicalCaseRepo,
+	chat_repo: ChatRepo,
 	response: Response,
+	state: str = "",
 ) -> RedirectResponse:
 	"""Handle the Google OAuth callback and redirect to the frontend with app tokens."""
 	token_data = await exchange_google_code(code)
@@ -326,6 +347,14 @@ async def google_callback(
 
 	google_user = await fetch_google_user_info(google_access_token)
 	user = await get_or_create_google_user(user_repo, google_user)
+
+	if state.strip() and normalize_guest_session_id(state):
+		await migrate_guest_session_to_user(
+			case_repo,
+			chat_repo,
+			guest_session_id=state,
+			user_id=user.id,
+		)
 
 	app_access_token, _ttl_seconds = create_access_token(user.id)
 	refresh_token = await create_refresh_token(user.id)
