@@ -111,6 +111,10 @@ jobs:
           ALLOW_STDOUT_EMAIL: "True"
           SMTP_USERNAME: ""
           SMTP_PASSWORD: ""
+	  MINIO_URL: ""
+	  MINIO_USERNAME: ""
+	  MINIO_PASSWORD: ""
+	  MINIO_BUCKET_NAME: ""
         run: |
           uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 &
 
