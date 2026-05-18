@@ -2,10 +2,9 @@ from celery import Celery
 from celery.signals import worker_process_init
 
 EMAIL_QUEUE = "email"
-
-celery_app = Celery("clinsights")
-
 PIPELINE_QUEUE = "pipeline"
+PIPELINE_DLQ_QUEUE = "pipeline.dlq"
+celery_app = Celery("clinsights")
 
 celery_app.conf.update(
 	task_acks_late=True,
@@ -13,6 +12,7 @@ celery_app.conf.update(
 	task_default_queue="default",
 	task_routes={
 		"app.tasks.emails.*": {"queue": EMAIL_QUEUE},
+		"app.tasks.pipeline.dead_letter_pipeline": {"queue": PIPELINE_DLQ_QUEUE},
 		"app.tasks.pipeline.*": {"queue": PIPELINE_QUEUE},
 	},
 	include=["app.tasks.emails", "app.tasks.pipeline"],
