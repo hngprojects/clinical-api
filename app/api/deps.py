@@ -2,7 +2,7 @@ from typing import Annotated
 from uuid import UUID
 
 import jwt
-from fastapi import Depends, Header
+from fastapi import Depends, Header, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,6 +21,8 @@ from app.repositories.token_blocklist import TokenBlocklistRepository
 from app.repositories.user import UserRepository
 from app.repositories.waitlist import WaitlistRepository
 from app.services.auth.tokens import decode_access_token
+from app.services.events import EventBus
+from app.services.websocket import ConnectionRegistry
 
 DBSession = Annotated[AsyncSession, Depends(get_session)]
 
@@ -167,3 +169,15 @@ def get_guest_session_id(x_guest_session_id: str | None = Header(None)) -> str |
 
 OptionalUser = Annotated[User | None, Depends(get_optional_user)]
 GuestSessionId = Annotated[str | None, Depends(get_guest_session_id)]
+
+
+def get_event_bus(request: Request) -> EventBus:
+	return request.app.state.event_bus
+
+
+def get_connection_registry(request: Request) -> ConnectionRegistry:
+	return request.app.state.connection_registry
+
+
+EventBusDep = Annotated[EventBus, Depends(get_event_bus)]
+ConnectionRegistryDep = Annotated[ConnectionRegistry, Depends(get_connection_registry)]
