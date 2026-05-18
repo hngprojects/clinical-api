@@ -103,7 +103,7 @@ async def create_guest_session(
 	ip_hash: str = "test-ip-hash",
 	device_fingerprint: str | None = None,
 ) -> GuestSessionInfo:
-	"""Issue or reuse a guest session (test helper and legacy callers)."""
+	"""Issue or reuse a guest session (test helper)."""
 	fp = device_fingerprint if device_fingerprint is not None else f"test-{uuid.uuid4()}"
 	async with AsyncSessionLocal() as db:
 		session = await _manager(db).create(ip_hash, fp)

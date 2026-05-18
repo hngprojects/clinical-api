@@ -11,13 +11,13 @@ from app.services.guest import create_guest_session, revoke_guest_session
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
-API = "/api/v1/guest/sessions"
+API = "/api/v1/guest-session"
 GUEST_HEADER = "X-Guest-Session-Id"
 
 
 async def test_create_guest_session_returns_201(client: AsyncClient) -> None:
 	response = await client.post(
-		"/api/v1/guest-session",
+		API,
 		headers={"X-Device-Fingerprint": f"api-{uuid.uuid4().hex[:8]}"},
 	)
 

@@ -1,4 +1,4 @@
-"""Guest session lifecycle backed by guest_sessions (Postgres)."""
+"""Guest session lifecycle backed by guest_sessions."""
 
 from __future__ import annotations
 
