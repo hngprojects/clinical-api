@@ -7,10 +7,10 @@ from app.models.lab_result import LabResult
 from app.models.medical_case import MedicalCase
 from app.models.notification import Notification
 from app.models.otp import OtpCode, OtpPurpose
+from app.models.pipeline_audit_log import PipelineAuditLog
 from app.models.token_blocklist import TokenBlocklist
 from app.models.user import User, UserRole
 from app.models.waitlist import Waitlist
-from app.models.pipeline_audit_log import PipelineAuditLog
 
 __all__ = [
 	"Base",
