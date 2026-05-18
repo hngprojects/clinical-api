@@ -13,22 +13,6 @@ from app.main import app
 from app.models.base import Base
 from app.models.user import User, UserRole
 from app.services.auth.tokens import create_access_token
-from tests.fakes.redis import FakeRedis
-
-
-@pytest.fixture(autouse=True)
-def patch_guest_redis(monkeypatch: pytest.MonkeyPatch) -> FakeRedis:
-	"""In-memory Redis for guest session validation in integration tests."""
-	fake = FakeRedis()
-
-	async def _get_redis() -> FakeRedis:
-		return fake
-
-	monkeypatch.setattr("app.core.redis_client.get_redis", _get_redis)
-	monkeypatch.setattr("app.services.guest.get_redis", _get_redis)
-	return fake
-
-
 @pytest.fixture(scope="session", autouse=True)
 async def setup_database():
     """

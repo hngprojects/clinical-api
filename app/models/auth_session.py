@@ -37,4 +37,4 @@ class AuthSession(Base):
 	revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 	revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-	user: Mapped["User"] = relationship(back_populates="auth_sessions")
+	user: Mapped["User"] = relationship(foreign_keys=[user_id])

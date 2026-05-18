@@ -1,12 +1,13 @@
 from uuid import UUID
 
-from app.core.config import get_settings
-from app.core.exceptions import ForbiddenError, NotFoundError
+from app.core.exceptions import NotFoundError, UnauthorizedError
 from app.models.chat import Chat, SenderType
+from app.models.guest_session import GuestSession
 from app.models.user import User
 from app.repositories.chat import ChatRepository
 from app.repositories.medical_case import MedicalCaseRepository
 from app.schemas.chat import ChatCreate
+from app.services.guest_sessions import GuestSessionManager, GuestUsageAction
 from app.services.medical_case import get_case
 
 
@@ -16,20 +17,22 @@ async def send_message(
 	payload: ChatCreate,
 	*,
 	user: User | None = None,
-	guest_session_id: str | None = None,
+	guest_session: GuestSession | None = None,
+	manager: GuestSessionManager | None = None,
 ) -> Chat:
 	"""Create a new chat message within a medical case."""
-	case = await get_case(
+	await get_case(
 		case_repo,
 		payload.medical_case_id,
 		user=user,
-		guest_session_id=guest_session_id,
+		guest_session=guest_session,
+		manager=manager,
 	)
 
 	if user is None and payload.sender_type == SenderType.PATIENT:
-		patient_messages = await chat_repo.count_patient_messages_by_case(case.id)
-		if patient_messages >= get_settings().GUEST_CHAT_MESSAGE_LIMIT:
-			raise ForbiddenError("Guest message limit reached. Please sign up to continue chatting.")
+		if guest_session is None or manager is None:
+			raise UnauthorizedError("Missing guest session.")
+		await manager.can_use(guest_session.id, GuestUsageAction.CHAT)
 
 	message = Chat(
 		user_id=payload.user_id or (user.id if user else None),
@@ -40,6 +43,10 @@ async def send_message(
 	chat_repo.add(message)
 	await chat_repo.commit()
 	await chat_repo.refresh(message)
+
+	if user is None and payload.sender_type == SenderType.PATIENT and manager is not None and guest_session is not None:
+		await manager.increment_chat(guest_session.id)
+
 	return message
 
 

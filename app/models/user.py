@@ -10,7 +10,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base
 
 if TYPE_CHECKING:
-	from app.models.auth_session import AuthSession
 	from app.models.chat import Chat
 	from app.models.guest_session import GuestSession
 	from app.models.medical_case import MedicalCase
@@ -65,7 +64,6 @@ class User(Base):
 	chats: Mapped[list["Chat"]] = relationship(back_populates="user")
 	notifications: Mapped[list["Notification"]] = relationship(back_populates="user")
 	otp_codes: Mapped[list["OtpCode"]] = relationship(back_populates="user", cascade="all, delete-orphan")
-	auth_sessions: Mapped[list["AuthSession"]] = relationship(back_populates="user")
 	migrated_guest_sessions: Mapped[list["GuestSession"]] = relationship(
 		foreign_keys="GuestSession.migrated_user_id",
 		back_populates="migrated_user",

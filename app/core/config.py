@@ -57,9 +57,10 @@ class Settings(BaseSettings):
 	CELERY_BROKER_URL: str = "redis://localhost:6379/0"
 	CELERY_RESULT_BACKEND: str | None = None
 
-	# Guest sessions (Redis TTL via CELERY_BROKER_URL)
+	# Guest sessions (Postgres guest_sessions table)
 	GUEST_SESSION_TTL_SECONDS: int = 3600  # 1 hour
 	GUEST_CHAT_MESSAGE_LIMIT: int = 3
+	GUEST_UPLOAD_LIMIT: int = 1
 
 	AI_PROVIDER: str = "auto"
 

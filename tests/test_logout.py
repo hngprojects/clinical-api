@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from httpx import AsyncClient
 
-from app.api.deps import get_current_user, get_session
+from app.api.deps import get_auth_session_manager, get_current_user, get_session
 from app.main import app
 from app.models.user import User, UserRole
 from app.services.auth.tokens import create_access_token, create_refresh_token
@@ -57,6 +57,12 @@ async def _override_get_session():
 	yield MockSession()
 
 
+def _mock_auth_manager() -> AsyncMock:
+	manager = AsyncMock()
+	manager.revoke_by_refresh_token = AsyncMock(return_value=None)
+	return manager
+
+
 # ---------------------------------------------------------------------------
 # autouse fixture – wipe dependency overrides between tests
 # ---------------------------------------------------------------------------
@@ -79,8 +85,8 @@ async def test_logout_success(client: AsyncClient) -> None:
 	refresh = await create_refresh_token(user.id)
 
 	app.dependency_overrides[get_session] = _override_get_session
-	# Bypass the real get_current_user (which needs a real DB)
 	app.dependency_overrides[get_current_user] = lambda: user
+	app.dependency_overrides[get_auth_session_manager] = _mock_auth_manager
 
 	with (
 		patch("app.api.v1.endpoints.auth.revoke_token", new_callable=AsyncMock) as mock_revoke,
@@ -108,6 +114,7 @@ async def test_token_rejected_after_logout(client: AsyncClient) -> None:
 	# First request: logout succeeds
 	app.dependency_overrides[get_session] = _override_get_session
 	app.dependency_overrides[get_current_user] = lambda: user
+	app.dependency_overrides[get_auth_session_manager] = _mock_auth_manager
 
 	with (
 		patch("app.api.v1.endpoints.auth.revoke_token", new_callable=AsyncMock),

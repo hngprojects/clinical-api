@@ -1,4 +1,4 @@
-"""Async Redis client shared by guest sessions and (later) EventBus."""
+"""Optional async Redis client (Celery broker URL). Guest sessions use Postgres only."""
 
 from __future__ import annotations
 

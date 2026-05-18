@@ -6,7 +6,7 @@ from app.api.deps import ClientIpHash, DeviceFingerprint, GuestSessionId, GuestS
 from app.core.exceptions import UnauthorizedError
 from app.core.responses import SuccessResponse
 from app.schemas.guest import GuestSessionResponse
-from app.services.guest import _session_info, _sync_redis_cache, normalize_guest_session_id
+from app.services.guest import normalize_guest_session_id, session_info
 
 router = APIRouter(prefix="/guest/sessions", tags=["guest-sessions"])
 
@@ -23,8 +23,7 @@ async def create_session(
 ) -> SuccessResponse[GuestSessionResponse]:
 	"""Issue or return an existing guest session (legacy path; prefer POST /guest-session)."""
 	session = await manager.create(ip_hash, device_fingerprint)
-	info = _session_info(session)
-	await _sync_redis_cache(info.guest_session_id, ttl=info.expires_in)
+	info = session_info(session)
 	return SuccessResponse(
 		message="Guest session created.",
 		data=GuestSessionResponse(
@@ -58,8 +57,7 @@ async def session_me(
 	if touched is None:
 		raise UnauthorizedError("Guest session expired or invalid.")
 
-	info = _session_info(touched)
-	await _sync_redis_cache(info.guest_session_id, ttl=info.expires_in)
+	info = session_info(touched)
 
 	return SuccessResponse(
 		message="OK",

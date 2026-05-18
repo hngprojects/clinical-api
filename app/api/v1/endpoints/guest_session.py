@@ -3,7 +3,7 @@ from fastapi import APIRouter, status
 from app.api.deps import ClientIpHash, DeviceFingerprint, GuestSessionManagerDep
 from app.core.responses import SuccessResponse
 from app.schemas.guest import GuestSessionResponse
-from app.services.guest import _session_info, _sync_redis_cache
+from app.services.guest import session_info
 
 router = APIRouter(tags=["guest-sessions"])
 
@@ -20,8 +20,7 @@ async def create_guest_session_route(
 ) -> SuccessResponse[GuestSessionResponse]:
 	"""Issue or return an existing guest session for this IP + device fingerprint."""
 	session = await manager.create(ip_hash, device_fingerprint)
-	info = _session_info(session)
-	await _sync_redis_cache(info.guest_session_id, ttl=info.expires_in)
+	info = session_info(session)
 	return SuccessResponse(
 		message="Guest session ready.",
 		data=GuestSessionResponse(

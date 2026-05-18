@@ -5,6 +5,7 @@ from uuid import UUID
 from app.core.exceptions import ForbiddenError, NotFoundError
 from app.models.ai_interpretation import AIInterpretation
 from app.models.chat import Chat
+from app.models.guest_session import GuestSession
 from app.models.lab_result import LabResult
 from app.models.medical_case import MedicalCase, MedicalCaseStatus
 from app.models.user import User
@@ -14,6 +15,7 @@ from app.repositories.lab_result import LabResultRepository
 from app.repositories.medical_case import MedicalCaseRepository
 from app.schemas.medical_case import MedicalCaseCreate, MedicalCaseUpdate
 from app.services.guest import resolve_guest_session_id, touch_guest_session
+from app.services.guest_sessions import GuestSessionManager
 
 
 @dataclass(frozen=True)
@@ -62,7 +64,9 @@ async def get_case(
 	case_id: UUID,
 	*,
 	user: User | None = None,
+	guest_session: GuestSession | None = None,
 	guest_session_id: str | None = None,
+	manager: GuestSessionManager | None = None,
 ) -> MedicalCase:
 	"""Fetch a single case, enforcing ownership by user or guest_session_id."""
 	case = await case_repo.get_by_id(case_id)
@@ -74,10 +78,14 @@ async def get_case(
 			raise ForbiddenError("You do not have access to this case.")
 		return case
 
-	valid_guest_id = await resolve_guest_session_id(guest_session_id)
+	if guest_session is not None:
+		valid_guest_id = guest_session.id
+	else:
+		valid_guest_id = await resolve_guest_session_id(guest_session_id, manager=manager)
+
 	if case.guest_session_id != valid_guest_id:
 		raise ForbiddenError("You do not have access to this case.")
-	await touch_guest_session(valid_guest_id)
+	await touch_guest_session(valid_guest_id, manager=manager)
 	return case
 
 
@@ -89,12 +97,21 @@ async def get_case_full(
 	case_id: UUID,
 	*,
 	user: User | None = None,
+	guest_session: GuestSession | None = None,
 	guest_session_id: str | None = None,
+	manager: GuestSessionManager | None = None,
 ) -> CaseFullDetail:
 	"""Load case with all lab results, latest interpretation, and full chat history."""
-	if user is not None and guest_session_id is not None:
+	if user is not None and (guest_session is not None or guest_session_id is not None):
 		raise ForbiddenError("You cannot access a case with both user and guest session.")
-	case = await get_case(case_repo, case_id, user=user, guest_session_id=guest_session_id)
+	case = await get_case(
+		case_repo,
+		case_id,
+		user=user,
+		guest_session=guest_session,
+		guest_session_id=guest_session_id,
+		manager=manager,
+	)
 	lab_count = await lab_repo.count_by_case(case_id)
 	lab_results = await lab_repo.list_by_case(case_id, offset=0, limit=lab_count) if lab_count else []
 	interpretation = await interp_repo.get_latest_for_case(case_id)
@@ -123,16 +140,16 @@ async def list_cases_for_user(
 
 async def list_cases_for_guest_session(
 	case_repo: MedicalCaseRepository,
-	guest_session_id: str,
+	guest_session: GuestSession,
 	*,
 	offset: int = 0,
 	limit: int = 50,
+	manager: GuestSessionManager | None = None,
 ) -> tuple[list[MedicalCase], int]:
 	"""Return paginated cases owned by a valid guest session."""
-	valid_guest_id = await resolve_guest_session_id(guest_session_id)
-	cases = await case_repo.get_by_guest_session(valid_guest_id, offset=offset, limit=limit)
-	total = await case_repo.count_by_guest_session(valid_guest_id)
-	await touch_guest_session(valid_guest_id)
+	cases = await case_repo.get_by_guest_session(guest_session.id, offset=offset, limit=limit)
+	total = await case_repo.count_by_guest_session(guest_session.id)
+	await touch_guest_session(guest_session.id, manager=manager)
 	return cases, total
 
 

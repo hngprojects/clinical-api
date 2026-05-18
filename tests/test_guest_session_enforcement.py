@@ -9,7 +9,6 @@ import pytest
 from httpx import AsyncClient
 
 from app.services.guest import create_guest_session
-from tests.fakes.redis import FakeRedis
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -25,25 +24,8 @@ _UPLOAD_PAYLOAD = {
 }
 
 
-@pytest.fixture
-def fake_redis() -> FakeRedis:
-	return FakeRedis()
-
-
-@pytest.fixture(autouse=True)
-def patch_redis(fake_redis: FakeRedis, monkeypatch: pytest.MonkeyPatch) -> None:
-	async def _get_redis() -> FakeRedis:
-		return fake_redis
-
-	monkeypatch.setattr("app.core.redis_client.get_redis", _get_redis)
-	monkeypatch.setattr("app.services.guest.get_redis", _get_redis)
-
-
-async def test_guest_upload_with_valid_session_returns_201(
-	client: AsyncClient,
-	fake_redis: FakeRedis,
-) -> None:
-	session = await create_guest_session(redis=fake_redis)
+async def test_guest_upload_with_valid_session_returns_201(client: AsyncClient) -> None:
+	session = await create_guest_session()
 	mock_task = MagicMock()
 
 	with patch(PIPELINE_TASK, mock_task):
@@ -65,12 +47,9 @@ async def test_guest_upload_without_session_returns_401(client: AsyncClient) -> 
 	assert response.status_code == 401
 
 
-async def test_guest_case_access_wrong_session_returns_403(
-	client: AsyncClient,
-	fake_redis: FakeRedis,
-) -> None:
-	owner = await create_guest_session(redis=fake_redis)
-	other = await create_guest_session(redis=fake_redis)
+async def test_guest_case_access_wrong_session_returns_403(client: AsyncClient) -> None:
+	owner = await create_guest_session()
+	other = await create_guest_session()
 	mock_task = MagicMock()
 
 	with patch(PIPELINE_TASK, mock_task):
@@ -88,11 +67,8 @@ async def test_guest_case_access_wrong_session_returns_403(
 	assert response.status_code == 403
 
 
-async def test_guest_fourth_patient_message_returns_403(
-	client: AsyncClient,
-	fake_redis: FakeRedis,
-) -> None:
-	session = await create_guest_session(redis=fake_redis)
+async def test_guest_fourth_patient_message_returns_403(client: AsyncClient) -> None:
+	session = await create_guest_session()
 	mock_task = MagicMock()
 
 	with patch(PIPELINE_TASK, mock_task):
@@ -132,9 +108,8 @@ async def test_guest_fourth_patient_message_returns_403(
 async def test_authenticated_upload_ignores_guest_header(
 	client: AsyncClient,
 	auth_headers: dict[str, str],
-	fake_redis: FakeRedis,
 ) -> None:
-	session = await create_guest_session(redis=fake_redis)
+	session = await create_guest_session()
 	mock_task = MagicMock()
 
 	with patch(PIPELINE_TASK, mock_task):

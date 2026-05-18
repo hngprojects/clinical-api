@@ -37,6 +37,13 @@ class ForbiddenError(HTTPException):
 		super().__init__(status_code=status.HTTP_403_FORBIDDEN, detail=message)
 
 
+class GuestLimitExceeded(ForbiddenError):
+	"""Raised when a guest session has exhausted chat or upload quota."""
+
+	def __init__(self, message: str = "Guest usage limit reached.") -> None:
+		super().__init__(message)
+
+
 class ConflictError(HTTPException):
 	"""Raised when a resource already exists."""
 

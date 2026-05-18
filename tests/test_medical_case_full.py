@@ -147,7 +147,7 @@ async def test_full_case_guest_session_allowed(client):
 			MedicalCase(
 				id=case_id,
 				user_id=None,
-				guest_session_id=guest_session,
+				guest_session_id=uuid.UUID(guest_session),
 				status=MedicalCaseStatus.PENDING,
 				created_at=now,
 			)

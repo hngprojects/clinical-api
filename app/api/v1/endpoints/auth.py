@@ -2,13 +2,16 @@ import logging
 from datetime import datetime, timezone
 from typing import Annotated
 from urllib.parse import urlencode
+from uuid import UUID
 
-from fastapi import APIRouter, Cookie, Depends, Query, status
+from fastapi import APIRouter, Cookie, Depends, Query, Request, status
 from fastapi.responses import RedirectResponse, Response
 from fastapi.security import HTTPAuthorizationCredentials
 
 from app.api.deps import (
+	AuthSessionManagerDep,
 	ChatRepo,
+	ClientIpHash,
 	CurrentUser,
 	DBSession,
 	GuestSessionId,
@@ -24,6 +27,7 @@ from app.core.exceptions import UnauthorizedError
 from app.core.responses import SuccessResponse
 from app.models.otp import OtpPurpose
 from app.schemas.auth import (
+	AuthSessionResponse,
 	ForgotPasswordRequest,
 	LoginRequest,
 	OtpDispatchResponse,
@@ -37,16 +41,13 @@ from app.schemas.user import UserResponse
 from app.services.auth import (
 	authenticate_credentials,
 	authenticate_otp,
-	create_access_token,
 	create_password_reset,
-	create_refresh_token,
 	decode_access_token,
 	decode_refresh_token,
 	otp_ttl_seconds,
 	resend_otp,
 	reset_password,
 	revoke_refresh_token,
-	rotate_all_tokens,
 	signup_user,
 )
 from app.services.auth.blocklist import is_token_revoked, revoke_token
@@ -126,23 +127,31 @@ async def signup(
 )
 async def login(
 	payload: LoginRequest,
+	request: Request,
 	user_repo: UserRepo,
+	auth_manager: AuthSessionManagerDep,
+	ip_hash: ClientIpHash,
 	response: Response,
 ) -> SuccessResponse[TokenResponse]:
 	"""Authenticate with email + password. Returns a JWT on success.
 
 	The account must have a verified email before login is permitted.
 	"""
-	user, access_token, ttl_seconds, refresh_token = await authenticate_credentials(
-		user_repo, email=payload.email, password=payload.password
+	user = await authenticate_credentials(user_repo, email=payload.email, password=payload.password)
+	issue = await auth_manager.create(
+		user.id,
+		payload.device_id,
+		platform=payload.platform,
+		ip_hash=ip_hash,
+		user_agent=request.headers.get("user-agent"),
 	)
-	_set_refresh_cookie(response, refresh_token)
+	_set_refresh_cookie(response, issue.refresh_token)
 	return SuccessResponse(
 		message="Logged in successfully.",
 		data=TokenResponse(
-			access_token=access_token,
+			access_token=issue.access_token,
 			token_type="bearer",
-			expires_in=ttl_seconds,
+			expires_in=issue.expires_in,
 			user=UserResponse.model_validate(user),
 		),
 	)
@@ -155,15 +164,18 @@ async def login(
 )
 async def verify_otp(
 	payload: VerifyOtpRequest,
+	request: Request,
 	guest_session_id: GuestSessionId,
 	user_repo: UserRepo,
 	otp_repo: OtpRepo,
 	case_repo: MedicalCaseRepo,
 	chat_repo: ChatRepo,
+	auth_manager: AuthSessionManagerDep,
+	ip_hash: ClientIpHash,
 	response: Response,
 ) -> SuccessResponse[TokenResponse]:
 	"""Verify the email-verification OTP sent after signup."""
-	user, access_token, ttl_seconds, refresh_token = await authenticate_otp(
+	user = await authenticate_otp(
 		user_repo,
 		otp_repo,
 		email=payload.email,
@@ -177,12 +189,20 @@ async def verify_otp(
 			guest_session_id=migration_guest_id,
 			user_id=user.id,
 		)
-	_set_refresh_cookie(response, refresh_token)
+	issue = await auth_manager.create(
+		user.id,
+		payload.device_id,
+		platform=payload.platform,
+		ip_hash=ip_hash,
+		user_agent=request.headers.get("user-agent"),
+	)
+	_set_refresh_cookie(response, issue.refresh_token)
 	return SuccessResponse(
 		message="Email verified. Welcome!",
 		data=TokenResponse(
-			access_token=access_token,
-			expires_in=ttl_seconds,
+			access_token=issue.access_token,
+			token_type="bearer",
+			expires_in=issue.expires_in,
 			user=UserResponse.model_validate(user),
 		),
 	)
@@ -285,6 +305,7 @@ async def password_reset(
 )
 async def logout(
 	current_user: CurrentUser,
+	auth_manager: AuthSessionManagerDep,
 	blocklist_repo: TokenBlocklistRepo,
 	credentials: Annotated[HTTPAuthorizationCredentials, Depends(bearer_scheme)],
 	refresh_token: Annotated[str | None, Cookie()] = None,
@@ -306,6 +327,7 @@ async def logout(
 		user_id=current_user.id,
 		expires_at=access_token_expires_at,
 	)
+	await auth_manager.revoke_by_refresh_token(refresh_token)
 	await revoke_refresh_token(refresh_token, blocklist_repo)
 	return SuccessResponse(message="Logged out successfully.")
 
@@ -333,9 +355,12 @@ async def google_login(
 @router.get("/google/callback")
 async def google_callback(
 	code: str,
+	request: Request,
 	user_repo: UserRepo,
 	case_repo: MedicalCaseRepo,
 	chat_repo: ChatRepo,
+	auth_manager: AuthSessionManagerDep,
+	ip_hash: ClientIpHash,
 	response: Response,
 	state: str = "",
 ) -> RedirectResponse:
@@ -356,9 +381,15 @@ async def google_callback(
 			user_id=user.id,
 		)
 
-	app_access_token, _ttl_seconds = create_access_token(user.id)
-	refresh_token = await create_refresh_token(user.id)
-	_set_refresh_cookie(response, refresh_token)
+	issue = await auth_manager.create(
+		user.id,
+		"google-oauth",
+		platform="web",
+		ip_hash=ip_hash,
+		user_agent=request.headers.get("user-agent"),
+	)
+	_set_refresh_cookie(response, issue.refresh_token)
+	app_access_token = issue.access_token
 
 	settings = get_settings()
 	redirect_url = f"{settings.FRONTEND_AUTH_CALLBACK_URL}?{urlencode({'access_token': app_access_token})}"
@@ -368,15 +399,15 @@ async def google_callback(
 # Token refresh
 @router.post("/refresh", response_model=SuccessResponse[TokenResponse])
 async def refresh(
-	user_repo: UserRepo,
+	auth_manager: AuthSessionManagerDep,
 	blocklist_repo: TokenBlocklistRepo,
 	response: Response,
 	refresh_token: Annotated[str | None, Cookie()] = None,
 ) -> SuccessResponse[TokenResponse]:
 	"""Refresh the access and refresh tokens.
 
-	Validates the inbound refresh token, ensures it has not been revoked,
-	revokes it (rotation), then mints a fresh access/refresh pair.
+	Validates the inbound refresh token against auth_sessions, blocklists the
+	old refresh JWT, then rotates to a new access/refresh pair on the same device.
 	"""
 	if not refresh_token:
 		raise UnauthorizedError("Refresh token cookie is required")
@@ -385,14 +416,71 @@ async def refresh(
 	if await is_token_revoked(blocklist_repo, refresh_token_jti):
 		raise UnauthorizedError("Refresh token has been revoked")
 	await revoke_refresh_token(refresh_token, blocklist_repo)
-	tokens = await rotate_all_tokens(user_repo=user_repo, refresh_token=refresh_token)
+	issue = await auth_manager.rotate_refresh(refresh_token)
 
-	_set_refresh_cookie(response, tokens["refresh_token"])
+	_set_refresh_cookie(response, issue.refresh_token)
 	return SuccessResponse(
 		message="Tokens refreshed",
 		data=TokenResponse(
-			access_token=tokens["access_token"],
+			access_token=issue.access_token,
 			token_type="bearer",
-			expires_in=tokens["expires_in"],
+			expires_in=issue.expires_in,
 		),
 	)
+
+
+@router.get(
+	"/sessions",
+	response_model=SuccessResponse[list[AuthSessionResponse]],
+)
+async def list_sessions(
+	current_user: CurrentUser,
+	auth_manager: AuthSessionManagerDep,
+) -> SuccessResponse[list[AuthSessionResponse]]:
+	"""List active device sessions for the authenticated user."""
+	sessions = await auth_manager.list_sessions(current_user.id)
+	return SuccessResponse(
+		message="OK",
+		data=[AuthSessionResponse.from_session(s) for s in sessions],
+	)
+
+
+@router.delete(
+	"/sessions/{session_id}",
+	response_model=SuccessResponse,
+)
+async def revoke_session(
+	session_id: UUID,
+	current_user: CurrentUser,
+	auth_manager: AuthSessionManagerDep,
+) -> SuccessResponse:
+	"""Revoke a single device session."""
+	await auth_manager.revoke(session_id, current_user.id)
+	return SuccessResponse(message="Session revoked.")
+
+
+@router.delete(
+	"/sessions",
+	response_model=SuccessResponse,
+)
+async def revoke_all_sessions(
+	current_user: CurrentUser,
+	auth_manager: AuthSessionManagerDep,
+	blocklist_repo: TokenBlocklistRepo,
+	credentials: Annotated[HTTPAuthorizationCredentials, Depends(bearer_scheme)],
+	refresh_token: Annotated[str | None, Cookie()] = None,
+) -> SuccessResponse:
+	"""Revoke every device session for the current user."""
+	count = await auth_manager.revoke_all(current_user.id)
+	if refresh_token:
+		await auth_manager.revoke_by_refresh_token(refresh_token)
+		await revoke_refresh_token(refresh_token, blocklist_repo)
+	if credentials is not None and credentials.scheme.lower() == "bearer":
+		payload = decode_access_token(credentials.credentials)
+		await revoke_token(
+			blocklist_repo,
+			jti=payload["jti"],
+			user_id=current_user.id,
+			expires_at=datetime.fromtimestamp(payload["exp"], tz=timezone.utc),
+		)
+	return SuccessResponse(message=f"Revoked {count} session(s).")

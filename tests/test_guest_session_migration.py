@@ -18,7 +18,6 @@ from app.repositories.chat import ChatRepository
 from app.repositories.medical_case import MedicalCaseRepository
 from app.services.auth.tokens import create_access_token
 from app.services.guest import create_guest_session, migrate_guest_session_to_user
-from tests.fakes.redis import FakeRedis
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -29,22 +28,8 @@ _UPLOAD = {
 }
 
 
-@pytest.fixture
-def fake_redis() -> FakeRedis:
-	return FakeRedis()
-
-
-@pytest.fixture(autouse=True)
-def patch_redis(fake_redis: FakeRedis, monkeypatch: pytest.MonkeyPatch) -> None:
-	async def _get_redis() -> FakeRedis:
-		return fake_redis
-
-	monkeypatch.setattr("app.core.redis_client.get_redis", _get_redis)
-	monkeypatch.setattr("app.services.guest.get_redis", _get_redis)
-
-
-async def test_migrate_guest_session_links_cases_and_chats(fake_redis: FakeRedis) -> None:
-	session_info = await create_guest_session(redis=fake_redis)
+async def test_migrate_guest_session_links_cases_and_chats() -> None:
+	session_info = await create_guest_session()
 	user_id = uuid.uuid4()
 	case_id = uuid.uuid4()
 	chat_id = uuid.uuid4()
@@ -88,7 +73,6 @@ async def test_migrate_guest_session_links_cases_and_chats(fake_redis: FakeRedis
 			chat_repo,
 			guest_session_id=session_info.guest_session_id,
 			user_id=user_id,
-			redis=fake_redis,
 		)
 
 	assert result.cases_migrated == 1
@@ -109,8 +93,8 @@ async def test_migrate_guest_session_links_cases_and_chats(fake_redis: FakeRedis
 		await db.commit()
 
 
-async def test_verify_otp_migrates_guest_case(client: AsyncClient, fake_redis: FakeRedis) -> None:
-	guest = await create_guest_session(redis=fake_redis)
+async def test_verify_otp_migrates_guest_case(client: AsyncClient) -> None:
+	guest = await create_guest_session()
 	mock_task = MagicMock()
 
 	with patch(PIPELINE_TASK, mock_task):
