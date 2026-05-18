@@ -68,9 +68,9 @@ async def get_case(
 	if case is None:
 		raise NotFoundError("Medical case not found.")
 	if user is not None and case.user_id != user.id:
-		raise ForbiddenError("You do not have access to this case.")
+		raise NotFoundError("Medical case not found.")
 	if user is None and guest_session_id is not None and case.guest_session_id != guest_session_id:
-		raise ForbiddenError("You do not have access to this case.")
+		raise NotFoundError("Medical case not found.")
 	return case
 
 
