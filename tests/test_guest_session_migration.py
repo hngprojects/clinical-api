@@ -65,7 +65,7 @@ async def test_migrate_guest_session_links_cases_and_chats(fake_redis: FakeRedis
 			MedicalCase(
 				id=case_id,
 				user_id=None,
-				guest_session_id=session_info.guest_session_id,
+				guest_session_id=uuid.UUID(session_info.guest_session_id),
 				status=MedicalCaseStatus.PENDING,
 			)
 		)

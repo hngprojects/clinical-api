@@ -33,7 +33,7 @@ class MedicalCaseRepository(BaseRepository[MedicalCase]):
 
 	async def get_by_guest_session(
 		self,
-		guest_session_id: str,
+		guest_session_id: UUID,
 		*,
 		offset: int = 0,
 		limit: int = 50,
@@ -47,7 +47,7 @@ class MedicalCaseRepository(BaseRepository[MedicalCase]):
 		)
 		return list(result.scalars().all())
 
-	async def count_by_guest_session(self, guest_session_id: str) -> int:
+	async def count_by_guest_session(self, guest_session_id: UUID) -> int:
 		result = await self._session.execute(
 			select(func.count()).select_from(MedicalCase).where(MedicalCase.guest_session_id == guest_session_id)
 		)

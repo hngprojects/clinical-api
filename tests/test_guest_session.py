@@ -17,10 +17,22 @@ from app.services.guest import (
 )
 from tests.fakes.redis import FakeRedis
 
+pytestmark = pytest.mark.asyncio(loop_scope="session")
+
 
 @pytest.fixture
 def fake_redis() -> FakeRedis:
 	return FakeRedis()
+
+
+@pytest.fixture(autouse=True)
+def skip_guest_db_persist(monkeypatch: pytest.MonkeyPatch) -> None:
+	"""Redis-only unit tests do not need guest_sessions rows."""
+
+	async def _noop(*_args: object, **_kwargs: object) -> None:
+		return None
+
+	monkeypatch.setattr("app.services.guest._persist_guest_session_row", _noop)
 
 
 @pytest.mark.asyncio

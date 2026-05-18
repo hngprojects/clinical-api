@@ -1,8 +1,10 @@
 from app.models.ai_interpretation import AIInterpretation
 from app.models.auth import PasswordResetToken
+from app.models.auth_session import AuthSession
 from app.models.base import Base
 from app.models.chat import Chat
 from app.models.contact import ContactMessage
+from app.models.guest_session import GuestSession
 from app.models.lab_result import LabResult
 from app.models.medical_case import MedicalCase
 from app.models.notification import Notification
@@ -14,7 +16,9 @@ from app.models.waitlist import Waitlist
 __all__ = [
 	"Base",
 	"AIInterpretation",
+	"AuthSession",
 	"ContactMessage",
+	"GuestSession",
 	"PasswordResetToken",
 	"TokenBlocklist",
 	"Chat",
