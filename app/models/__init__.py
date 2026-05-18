@@ -24,8 +24,8 @@ __all__ = [
 	"Notification",
 	"OtpCode",
 	"OtpPurpose",
+	"PipelineAuditLog",
 	"User",
 	"UserRole",
 	"Waitlist",
-	"PipelineAuditLog",
 ]
