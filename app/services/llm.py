@@ -20,7 +20,9 @@ Both return the model's raw text output (callers parse it as JSON themselves).
 
 from __future__ import annotations
 
+import json
 import logging
+from collections.abc import AsyncGenerator
 from typing import Any
 
 import httpx
@@ -313,3 +315,78 @@ async def vision_complete(
 			raise
 
 	raise LLMProviderError(f"All configured LLM providers failed. Last error: {last_exc}") from last_exc
+
+
+async def _openai_stream(
+	system: str,
+	user: str,
+	max_tokens: int,
+	temperature: float,
+) -> AsyncGenerator[str, None]:
+	"""
+	Calls OpenAI with stream=True and yields tokens as they arrive.
+	OpenAI streams responses as Server-Sent Events (SSE) —
+	each line looks like: data: {"choices": [{"delta": {"content": "Hi"}}]}
+	We parse each line and yield just the text content.
+	"""
+	settings = get_settings()
+	payload: dict[str, Any] = {
+		"model": settings.OPENAI_MODEL,
+		"messages": [
+			{"role": "system", "content": system},
+			{"role": "user", "content": user},
+		],
+		"max_tokens": max_tokens,
+		"temperature": temperature,
+		"stream": True,
+	}
+	async with httpx.AsyncClient(timeout=settings.PIPELINE_TIMEOUT_SECONDS) as client:
+		async with client.stream(  # ← client.stream() instead of client.post()
+			"POST",
+			"https://api.openai.com/v1/chat/completions",
+			headers={
+				"Authorization": f"Bearer {settings.OPENAI_API_KEY}",
+				"Content-Type": "application/json",
+			},
+			json=payload,
+		) as response:
+			response.raise_for_status()
+			async for line in response.aiter_lines():  # read one SSE line at a time
+				if not line.startswith("data: "):
+					continue
+				chunk = line[6:]
+				if chunk.strip() == "[DONE]":
+					return
+				try:
+					data = json.loads(chunk)
+					token = data["choices"][0]["delta"].get("content")
+					if token:
+						yield token
+				except (KeyError, json.JSONDecodeError):
+					continue
+
+
+async def stream_text_complete(
+	system: str,
+	user: str,
+	*,
+	max_tokens: int = 1200,
+	temperature: float = 0.2,
+) -> AsyncGenerator[str, None]:
+	"""
+	Public streaming interface — mirrors text_complete() but yields tokens.
+
+	OpenAI: true token-by-token streaming.
+	Gemini: falls back to one big yield of the full response.
+	Gemini streaming uses a completely different binary protocol — not worth
+	the complexity for this feature.
+	"""
+	order = _resolve_order()
+
+	if order[0] == "openai":
+		async for token in _openai_stream(system, user, max_tokens, temperature):
+			yield token
+	else:
+		# Gemini fallback — still works, just not word-by-word
+		result = await _gemini_text(system, user, max_tokens, temperature)
+		yield result

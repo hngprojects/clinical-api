@@ -11,9 +11,6 @@ from app.models import Base
 
 import app.models  # noqa: F401  ensure all models are registered
 
-from app.models.base import Base
-from app.models.user import User
-
 config = context.config
 config.set_main_option("sqlalchemy.url", str(get_settings().DATABASE_URL))
 
