@@ -17,6 +17,7 @@ from app.repositories.medical_case import MedicalCaseRepository
 from app.repositories.notification import NotificationRepository
 from app.repositories.otp import OtpRepository
 from app.repositories.password_reset import PasswordResetRepository
+from app.repositories.pipeline_audit_log import PipelineAuditLogRepository
 from app.repositories.token_blocklist import TokenBlocklistRepository
 from app.repositories.user import UserRepository
 from app.repositories.waitlist import WaitlistRepository
@@ -72,6 +73,10 @@ def get_contact_repo(session: DBSession) -> ContactRepository:
 	return ContactRepository(session)
 
 
+def get_pipeline_audit_log_repo(session: DBSession) -> PipelineAuditLogRepository:
+	return PipelineAuditLogRepository(session)
+
+
 # Annotated shortcuts
 UserRepo = Annotated[UserRepository, Depends(get_user_repo)]
 OtpRepo = Annotated[OtpRepository, Depends(get_otp_repo)]
@@ -84,6 +89,7 @@ ChatRepo = Annotated[ChatRepository, Depends(get_chat_repo)]
 NotificationRepo = Annotated[NotificationRepository, Depends(get_notification_repo)]
 WaitlistRepo = Annotated[WaitlistRepository, Depends(get_waitlist_repo)]
 ContactRepo = Annotated[ContactRepository, Depends(get_contact_repo)]
+PipelineAuditLogRepo = Annotated[PipelineAuditLogRepository, Depends(get_pipeline_audit_log_repo)]
 
 
 # Auth guard
