@@ -5,19 +5,18 @@ from app.models.chat import Chat
 from app.models.contact import ContactMessage
 from app.models.lab_result import LabResult
 from app.models.medical_case import MedicalCase
-from app.models.pipeline_audit_log import PipelineAuditLog
 from app.models.notification import Notification
 from app.models.otp import OtpCode, OtpPurpose
 from app.models.token_blocklist import TokenBlocklist
 from app.models.user import User, UserRole
 from app.models.waitlist import Waitlist
+from app.models.pipeline_audit_log import PipelineAuditLog
 
 __all__ = [
 	"Base",
 	"AIInterpretation",
 	"ContactMessage",
 	"PasswordResetToken",
-	"PipelineAuditLog",
 	"TokenBlocklist",
 	"Chat",
 	"LabResult",
@@ -28,4 +27,5 @@ __all__ = [
 	"User",
 	"UserRole",
 	"Waitlist",
+	"PipelineAuditLog",
 ]
