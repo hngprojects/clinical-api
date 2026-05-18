@@ -7,6 +7,7 @@ from app.api.v1.endpoints import (
 	contact,
 	guest,
 	guest_cases,
+	guest_session,
 	health,
 	lab_result,
 	medical_case,
@@ -19,6 +20,7 @@ api_router = APIRouter()
 api_router.include_router(health.router, tags=["health"])
 api_router.include_router(auth.router)
 api_router.include_router(guest.router)
+api_router.include_router(guest_session.router)
 api_router.include_router(guest_cases.router)
 api_router.include_router(medical_case.router)
 api_router.include_router(lab_result.router)

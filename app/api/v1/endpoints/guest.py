@@ -1,10 +1,12 @@
+from uuid import UUID
+
 from fastapi import APIRouter, status
 
-from app.api.deps import GuestSessionId
+from app.api.deps import ClientIpHash, DeviceFingerprint, GuestSessionId, GuestSessionManagerDep
 from app.core.exceptions import UnauthorizedError
 from app.core.responses import SuccessResponse
 from app.schemas.guest import GuestSessionResponse
-from app.services.guest import create_guest_session, get_guest_session, touch_guest_session
+from app.services.guest import _session_info, _sync_redis_cache, normalize_guest_session_id
 
 router = APIRouter(prefix="/guest/sessions", tags=["guest-sessions"])
 
@@ -14,9 +16,15 @@ router = APIRouter(prefix="/guest/sessions", tags=["guest-sessions"])
 	response_model=SuccessResponse[GuestSessionResponse],
 	status_code=status.HTTP_201_CREATED,
 )
-async def create_session() -> SuccessResponse[GuestSessionResponse]:
-	"""Issue a new guest session id (stored in Redis with TTL)."""
-	info = await create_guest_session()
+async def create_session(
+	manager: GuestSessionManagerDep,
+	ip_hash: ClientIpHash,
+	device_fingerprint: DeviceFingerprint,
+) -> SuccessResponse[GuestSessionResponse]:
+	"""Issue or return an existing guest session (legacy path; prefer POST /guest-session)."""
+	session = await manager.create(ip_hash, device_fingerprint)
+	info = _session_info(session)
+	await _sync_redis_cache(info.guest_session_id, ttl=info.expires_in)
 	return SuccessResponse(
 		message="Guest session created.",
 		data=GuestSessionResponse(
@@ -32,24 +40,31 @@ async def create_session() -> SuccessResponse[GuestSessionResponse]:
 )
 async def session_me(
 	guest_session_id: GuestSessionId,
+	manager: GuestSessionManagerDep,
 ) -> SuccessResponse[GuestSessionResponse]:
 	"""Validate the caller's guest session and return remaining TTL."""
 	if not guest_session_id:
 		raise UnauthorizedError("Missing X-Guest-Session-Id header.")
 
-	info = await get_guest_session(guest_session_id)
-	if info is None:
+	normalized = normalize_guest_session_id(guest_session_id)
+	if normalized is None:
+		raise UnauthorizedError("Invalid guest session id.")
+
+	session = await manager.get(UUID(normalized))
+	if session is None:
 		raise UnauthorizedError("Guest session expired or invalid.")
 
-	await touch_guest_session(guest_session_id)
-	refreshed = await get_guest_session(guest_session_id)
-	if refreshed is None:
+	touched = await manager.touch(UUID(normalized))
+	if touched is None:
 		raise UnauthorizedError("Guest session expired or invalid.")
+
+	info = _session_info(touched)
+	await _sync_redis_cache(info.guest_session_id, ttl=info.expires_in)
 
 	return SuccessResponse(
 		message="OK",
 		data=GuestSessionResponse(
-			guest_session_id=refreshed.guest_session_id,
-			expires_in=refreshed.expires_in,
+			guest_session_id=info.guest_session_id,
+			expires_in=info.expires_in,
 		),
 	)

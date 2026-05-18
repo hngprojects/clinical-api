@@ -2,16 +2,24 @@ from typing import Annotated
 from uuid import UUID
 
 import jwt
-from fastapi import Depends, Header
+from fastapi import Depends, Header, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import UnauthorizedError
+from app.core.guest_session import (
+	DEVICE_FINGERPRINT_HEADER,
+	get_client_ip,
+	hash_client_ip,
+	normalize_device_fingerprint,
+)
 from app.db.session import get_session
 from app.models.user import User
 from app.repositories.ai_interpretation import AIInterpretationRepository
+from app.repositories.auth_session import AuthSessionRepository
 from app.repositories.chat import ChatRepository
 from app.repositories.contact import ContactRepository
+from app.repositories.guest_session import GuestSessionRepository
 from app.repositories.lab_result import LabResultRepository
 from app.repositories.medical_case import MedicalCaseRepository
 from app.repositories.notification import NotificationRepository
@@ -21,6 +29,7 @@ from app.repositories.token_blocklist import TokenBlocklistRepository
 from app.repositories.user import UserRepository
 from app.repositories.waitlist import WaitlistRepository
 from app.services.auth.tokens import decode_access_token
+from app.services.guest_sessions import GuestSessionManager
 
 DBSession = Annotated[AsyncSession, Depends(get_session)]
 
@@ -72,6 +81,20 @@ def get_contact_repo(session: DBSession) -> ContactRepository:
 	return ContactRepository(session)
 
 
+def get_guest_session_repo(session: DBSession) -> GuestSessionRepository:
+	return GuestSessionRepository(session)
+
+
+def get_auth_session_repo(session: DBSession) -> AuthSessionRepository:
+	return AuthSessionRepository(session)
+
+
+def get_guest_session_manager(
+	guest_session_repo: Annotated[GuestSessionRepository, Depends(get_guest_session_repo)],
+) -> GuestSessionManager:
+	return GuestSessionManager(guest_session_repo)
+
+
 # Annotated shortcuts
 UserRepo = Annotated[UserRepository, Depends(get_user_repo)]
 OtpRepo = Annotated[OtpRepository, Depends(get_otp_repo)]
@@ -84,6 +107,8 @@ ChatRepo = Annotated[ChatRepository, Depends(get_chat_repo)]
 NotificationRepo = Annotated[NotificationRepository, Depends(get_notification_repo)]
 WaitlistRepo = Annotated[WaitlistRepository, Depends(get_waitlist_repo)]
 ContactRepo = Annotated[ContactRepository, Depends(get_contact_repo)]
+GuestSessionRepo = Annotated[GuestSessionRepository, Depends(get_guest_session_repo)]
+GuestSessionManagerDep = Annotated[GuestSessionManager, Depends(get_guest_session_manager)]
 
 
 # Auth guard
@@ -165,5 +190,17 @@ def get_guest_session_id(x_guest_session_id: str | None = Header(None)) -> str |
 	return x_guest_session_id
 
 
+def get_device_fingerprint(
+	x_device_fingerprint: str | None = Header(None, alias=DEVICE_FINGERPRINT_HEADER),
+) -> str | None:
+	return normalize_device_fingerprint(x_device_fingerprint)
+
+
+def get_ip_hash(request: Request) -> str:
+	return hash_client_ip(get_client_ip(request))
+
+
 OptionalUser = Annotated[User | None, Depends(get_optional_user)]
 GuestSessionId = Annotated[str | None, Depends(get_guest_session_id)]
+DeviceFingerprint = Annotated[str | None, Depends(get_device_fingerprint)]
+ClientIpHash = Annotated[str, Depends(get_ip_hash)]

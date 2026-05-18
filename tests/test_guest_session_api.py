@@ -39,7 +39,7 @@ async def test_create_guest_session_returns_201(client: AsyncClient) -> None:
 	assert body["message"] == "Guest session created."
 	data = body["data"]
 	assert uuid.UUID(data["guest_session_id"])
-	assert data["expires_in"] == 3600
+	assert 3590 <= data["expires_in"] <= 3600
 
 
 async def test_session_me_valid_header_returns_200(client: AsyncClient, fake_redis: FakeRedis) -> None:
@@ -50,7 +50,7 @@ async def test_session_me_valid_header_returns_200(client: AsyncClient, fake_red
 	assert response.status_code == 200
 	data = response.json()["data"]
 	assert data["guest_session_id"] == info.guest_session_id
-	assert data["expires_in"] == 3600
+	assert 3590 <= data["expires_in"] <= 3600
 
 
 async def test_session_me_missing_header_returns_401(client: AsyncClient) -> None:
