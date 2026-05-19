@@ -44,6 +44,13 @@ class GuestLimitExceeded(ForbiddenError):
 		super().__init__(message)
 
 
+class RateLimitExceeded(HTTPException):
+	"""Raised when a client exceeds a configured request rate limit."""
+
+	def __init__(self, message: str = "Too many requests. Please try again later.") -> None:
+		super().__init__(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=message)
+
+
 class ConflictError(HTTPException):
 	"""Raised when a resource already exists."""
 

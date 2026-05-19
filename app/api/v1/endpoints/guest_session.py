@@ -4,6 +4,7 @@ from fastapi import APIRouter, status
 
 from app.api.deps import ClientIpHash, DeviceFingerprint, GuestSessionId, GuestSessionManagerDep
 from app.core.exceptions import UnauthorizedError
+from app.core.rate_limit import enforce_guest_session_create_limit
 from app.core.responses import SuccessResponse
 from app.schemas.guest import GuestSessionResponse
 from app.services.guest import normalize_guest_session_id, session_info
@@ -22,6 +23,7 @@ async def create_guest_session_route(
 	device_fingerprint: DeviceFingerprint,
 ) -> SuccessResponse[GuestSessionResponse]:
 	"""Issue or return an existing guest session for this IP + device fingerprint."""
+	await enforce_guest_session_create_limit(ip_hash)
 	session = await manager.create(ip_hash, device_fingerprint)
 	info = session_info(session)
 	return SuccessResponse(

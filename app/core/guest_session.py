@@ -17,10 +17,17 @@ def hash_client_ip(client_ip: str) -> str:
 
 
 def get_client_ip(request: Request) -> str:
-	"""Resolve client IP, honoring X-Forwarded-For when present."""
-	forwarded = request.headers.get("X-Forwarded-For")
-	if forwarded:
-		return forwarded.split(",")[0].strip()
+	"""Resolve client IP for guest session binding.
+
+	Only trusts X-Forwarded-For when TRUST_PROXY_FORWARDED_IP is enabled (production
+	behind a known reverse proxy). Otherwise uses the direct connection peer.
+	"""
+	from app.core.config import get_settings
+
+	if get_settings().TRUST_PROXY_FORWARDED_IP:
+		forwarded = request.headers.get("X-Forwarded-For")
+		if forwarded:
+			return forwarded.split(",")[0].strip()
 	if request.client is not None and request.client.host:
 		return request.client.host
 	return "unknown"
