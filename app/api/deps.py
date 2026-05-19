@@ -33,9 +33,9 @@ from app.repositories.user import UserRepository
 from app.repositories.waitlist import WaitlistRepository
 from app.services.auth.tokens import decode_access_token
 from app.services.auth_sessions import AuthSessionManager
+from app.services.events import EventBus
 from app.services.guest import normalize_guest_session_id, to_guest_session_uuid
 from app.services.guest_sessions import GuestSessionManager
-from app.services.events import EventBus
 from app.services.websocket import ConnectionRegistry
 
 DBSession = Annotated[AsyncSession, Depends(get_session)]
@@ -106,6 +106,8 @@ def get_guest_session_manager(
 	guest_session_repo: Annotated[GuestSessionRepository, Depends(get_guest_session_repo)],
 ) -> GuestSessionManager:
 	return GuestSessionManager(guest_session_repo)
+
+
 def get_pipeline_audit_log_repo(session: DBSession) -> PipelineAuditLogRepository:
 	return PipelineAuditLogRepository(session)
 
