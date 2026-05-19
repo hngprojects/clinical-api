@@ -9,6 +9,7 @@ from app.models.medical_case import MedicalCase, MedicalCaseStatus
 from app.models.user import User
 from app.repositories.lab_result import LabResultRepository
 from app.repositories.medical_case import MedicalCaseRepository
+from app.repositories.medical_upload import MedicalUploadRepository
 from app.schemas.lab_result import LabResultCreate, LabResultUpdate, UploadRequest
 from app.services.guest_sessions import GuestSessionManager, GuestUsageAction
 
@@ -62,6 +63,54 @@ async def upload_lab_result(
 	await lab_repo.refresh(lab_result)
 
 	# Fire the pipeline
+	run_lab_result_pipeline.delay(str(lab_result.id))
+
+	return case, lab_result
+
+
+async def handle_file_upload(
+	lab_repo: LabResultRepository,
+	case_repo: MedicalCaseRepository,
+	upload_repo: MedicalUploadRepository,
+	file: bytes,
+	filename: str,
+	content_type: str,
+	user: User | None,
+	guest_session_id: str | None,
+	public_url_base: str,
+) -> tuple[MedicalCase, LabResult]:
+	"""Create a MedicalCase + LabResult for a file upload and enqueue the pipeline."""
+	from app.services.storage import upload_medical_file
+	from app.tasks.pipeline import run_lab_result_pipeline
+
+	case = MedicalCase(
+		user_id=user.id if user else None,
+		guest_session_id=guest_session_id,
+		status=MedicalCaseStatus.PENDING,
+	)
+	case_repo.add(case)
+	await case_repo.commit()
+	await case_repo.refresh(case)
+
+	# Persist the file and record metadata.
+	file_metadata = await upload_medical_file(
+		upload_repo,
+		file,
+		filename,
+		content_type,
+		case.id,
+		public_url_base,
+	)
+
+	lab_result = LabResult(
+		medical_case_id=case.id,
+		file={"name": file_metadata["filename"], "url": file_metadata["file_url"]},
+		ocr_status=OCRStatus.PENDING,
+	)
+	lab_repo.add(lab_result)
+	await lab_repo.commit()
+	await lab_repo.refresh(lab_result)
+
 	run_lab_result_pipeline.delay(str(lab_result.id))
 
 	return case, lab_result

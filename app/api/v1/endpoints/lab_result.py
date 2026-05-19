@@ -1,21 +1,23 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, File, Query, Request, UploadFile, status
 
 from app.api.deps import (
 	CurrentUser,
 	GuestSessionManagerDep,
 	LabResultRepo,
 	MedicalCaseRepo,
+	MedicalUploadRepo,
 	SessionContextDep,
 )
+from app.core.exceptions import BadRequestError, UnauthorizedError
 from app.core.responses import SuccessResponse
-from app.schemas.lab_result import LabResultCreate, LabResultResponse, UploadRequest, UploadResponse
+from app.schemas.lab_result import LabResultCreate, LabResultResponse, UploadResponse
 from app.services.lab_result import (
 	create_lab_result,
 	get_lab_result,
+	handle_file_upload,
 	list_lab_results_for_case,
-	upload_lab_result,
 )
 from app.services.medical_case import get_case
 
@@ -28,27 +30,50 @@ router = APIRouter(tags=["lab-results"])
 	status_code=status.HTTP_201_CREATED,
 )
 async def upload(
-	payload: UploadRequest,
+	request: Request,
 	ctx: SessionContextDep,
-	manager: GuestSessionManagerDep,
 	lab_repo: LabResultRepo,
 	case_repo: MedicalCaseRepo,
+	upload_repo: MedicalUploadRepo,
+	file: UploadFile = File(...),
 ) -> SuccessResponse[UploadResponse]:
 	"""Upload a lab result file.
 
 	Creates a MedicalCase and a LabResult in one action, then triggers
-	the OCR → AI pipeline. This is the primary upload path — the frontend
-	sends one request and polls GET /cases/{case_id}/interpretations/latest
-	for the result.
+	the OCR → AI pipeline. The upload is authenticated by user or guest session.
 	"""
-	case, lab_result = await upload_lab_result(
+	if ctx.user is None and ctx.guest_session_id is None:
+		raise UnauthorizedError("Missing authentication or guest session.")
+
+	valid_media_types = {
+		"image/jpeg",
+		"image/png",
+		"image/webp",
+		"application/pdf",
+	}
+	if file.content_type not in valid_media_types:
+		raise BadRequestError("Unsupported file type. Acceptable types are JPEG, PNG, WebP, or PDF.")
+
+	if file.size is not None and file.size > 10 * 1024 * 1024:
+		raise BadRequestError("File size must be 10MB or smaller.")
+
+	file_contents = await file.read()
+	if len(file_contents) > 10 * 1024 * 1024:
+		raise BadRequestError("File size must be 10MB or smaller.")
+
+	public_url_base = str(request.base_url).rstrip("/")
+	case, lab_result = await handle_file_upload(
 		lab_repo,
 		case_repo,
-		payload,
+		upload_repo,
+		file_contents,
+		file.filename,
+		file.content_type or "application/octet-stream",
 		ctx.user,
-		guest_session=ctx.guest_session,
-		manager=manager,
+		ctx.guest_session_id,
+		public_url_base,
 	)
+
 	return SuccessResponse(
 		message="Upload received. Processing started.",
 		data=UploadResponse(
@@ -98,7 +123,7 @@ async def list_for_case(
 		case_repo,
 		case_id,
 		user=ctx.user,
-		guest_session=ctx.guest_session,
+		guest_session_id=ctx.guest_session_id,
 		manager=manager,
 	)
 	results = await list_lab_results_for_case(lab_repo, case_id, offset=offset, limit=limit)
@@ -125,7 +150,7 @@ async def retrieve(
 		case_repo,
 		case_id,
 		user=ctx.user,
-		guest_session=ctx.guest_session,
+		guest_session_id=ctx.guest_session_id,
 		manager=manager,
 	)
 	result = await get_lab_result(lab_repo, result_id)

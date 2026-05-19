@@ -24,6 +24,7 @@ from app.repositories.contact import ContactRepository
 from app.repositories.guest_session import GuestSessionRepository
 from app.repositories.lab_result import LabResultRepository
 from app.repositories.medical_case import MedicalCaseRepository
+from app.repositories.medical_upload import MedicalUploadRepository
 from app.repositories.notification import NotificationRepository
 from app.repositories.otp import OtpRepository
 from app.repositories.password_reset import PasswordResetRepository
@@ -88,6 +89,10 @@ def get_contact_repo(session: DBSession) -> ContactRepository:
 	return ContactRepository(session)
 
 
+def get_medical_upload_repo(session: DBSession) -> MedicalUploadRepository:
+	return MedicalUploadRepository(session)
+
+
 def get_guest_session_repo(session: DBSession) -> GuestSessionRepository:
 	return GuestSessionRepository(session)
 
@@ -129,6 +134,7 @@ AuthSessionRepo = Annotated[AuthSessionRepository, Depends(get_auth_session_repo
 AuthSessionManagerDep = Annotated[AuthSessionManager, Depends(get_auth_session_manager)]
 GuestSessionManagerDep = Annotated[GuestSessionManager, Depends(get_guest_session_manager)]
 PipelineAuditLogRepo = Annotated[PipelineAuditLogRepository, Depends(get_pipeline_audit_log_repo)]
+MedicalUploadRepo = Annotated[MedicalUploadRepository, Depends(get_medical_upload_repo)]
 
 
 # Auth guard
@@ -279,3 +285,19 @@ def get_connection_registry(request: Request) -> ConnectionRegistry:
 
 EventBusDep = Annotated[EventBus, Depends(get_event_bus)]
 ConnectionRegistryDep = Annotated[ConnectionRegistry, Depends(get_connection_registry)]
+
+
+@dataclass
+class SessionContext:
+	user: User | None
+	guest_session_id: str | None
+
+
+def get_session_context(
+	user: OptionalUser,
+	guest_session_id: GuestSessionId,
+) -> SessionContext:
+	return SessionContext(user=user, guest_session_id=guest_session_id)
+
+
+SessionContextDep = Annotated[SessionContext, Depends(get_session_context)]
