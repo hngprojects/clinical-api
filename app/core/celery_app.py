@@ -1,4 +1,5 @@
 from celery import Celery
+from celery.schedules import crontab
 from celery.signals import worker_process_init
 
 EMAIL_QUEUE = "email"
@@ -15,8 +16,15 @@ celery_app.conf.update(
 		"app.tasks.emails.*": {"queue": EMAIL_QUEUE},
 		"app.tasks.pipeline.*": {"queue": PIPELINE_QUEUE},
 	},
-	include=["app.tasks.emails", "app.tasks.pipeline"],
+	include=["app.tasks.emails", "app.tasks.maintenance", "app.tasks.pipeline"],
 )
+
+celery_app.conf.beat_schedule = {
+	"purge-expired-guest-sessions-daily": {
+		"task": "app.tasks.maintenance.purge_expired_guest_sessions",
+		"schedule": crontab(hour=3, minute=0),
+	},
+}
 
 
 def configure_celery(**kwargs: object) -> None:  # noqa: ARG001

@@ -30,7 +30,7 @@ from app.core.config import get_settings
 logger = logging.getLogger(__name__)
 
 # HTTP status codes that trigger a provider fallback in "auto" mode
-_FALLBACK_STATUS_CODES = {401, 403, 429}
+_FALLBACK_STATUS_CODES = {401, 403, 429, 502, 503, 504}
 
 
 # Errors
