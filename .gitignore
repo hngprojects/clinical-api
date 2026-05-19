@@ -183,3 +183,6 @@ new_changes_*.md
 
 docker-compose.yml
 docker/
+docs/
+scripts/smoke-session-management.sh
+curl_test.sh

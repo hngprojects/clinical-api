@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum, ForeignKey, String
+from sqlalchemy import DateTime, Enum, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -12,6 +12,7 @@ from app.models.base import Base
 if TYPE_CHECKING:
 	from app.models.ai_interpretation import AIInterpretation
 	from app.models.chat import Chat
+	from app.models.guest_session import GuestSession
 	from app.models.lab_result import LabResult
 	from app.models.notification import Notification
 	from app.models.user import User
@@ -33,7 +34,12 @@ class MedicalCase(Base):
 	user_id: Mapped[uuid.UUID | None] = mapped_column(
 		UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
 	)
-	guest_session_id: Mapped[str | None] = mapped_column(String, nullable=True)
+	guest_session_id: Mapped[uuid.UUID | None] = mapped_column(
+		UUID(as_uuid=True),
+		ForeignKey("guest_sessions.id", ondelete="SET NULL"),
+		nullable=True,
+		index=True,
+	)
 	status: Mapped[MedicalCaseStatus] = mapped_column(
 		Enum(MedicalCaseStatus, values_callable=lambda obj: [e.value for e in obj]), nullable=False
 	)
@@ -43,6 +49,7 @@ class MedicalCase(Base):
 	completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 	user: Mapped["User"] = relationship(back_populates="medical_cases")
+	guest_session: Mapped["GuestSession | None"] = relationship(back_populates="medical_cases")
 	lab_results: Mapped[list["LabResult"]] = relationship(back_populates="medical_case")
 	ai_interpretations: Mapped[list["AIInterpretation"]] = relationship(back_populates="medical_case")
 	chats: Mapped[list["Chat"]] = relationship(back_populates="medical_case")

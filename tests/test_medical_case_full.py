@@ -14,6 +14,7 @@ from app.models.lab_result import LabResult, OCRStatus
 from app.models.medical_case import MedicalCase, MedicalCaseStatus
 from app.models.user import User, UserRole
 from app.services.auth.tokens import create_access_token
+from app.services.guest import create_guest_session
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -136,7 +137,7 @@ async def test_full_case_wrong_user_returns_403(client, test_user):
 
 
 async def test_full_case_guest_session_allowed(client):
-	guest_session = f"guest-full-{uuid.uuid4().hex[:12]}"
+	guest_session = (await create_guest_session()).guest_session_id
 	case_id = uuid.uuid4()
 	lab_id = uuid.uuid4()
 	now = datetime.now(timezone.utc)
@@ -146,7 +147,7 @@ async def test_full_case_guest_session_allowed(client):
 			MedicalCase(
 				id=case_id,
 				user_id=None,
-				guest_session_id=guest_session,
+				guest_session_id=uuid.UUID(guest_session),
 				status=MedicalCaseStatus.PENDING,
 				created_at=now,
 			)

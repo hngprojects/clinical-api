@@ -6,9 +6,10 @@ from app.api.deps import (
 	AIInterpretationRepo,
 	ChatRepo,
 	CurrentUser,
-	GuestSessionId,
+	GuestSessionManagerDep,
 	LabResultRepo,
 	MedicalCaseRepo,
+	SessionContextDep,
 	OptionalUser,
 	PipelineAuditLogRepo,
 )
@@ -75,8 +76,8 @@ async def list_mine(
 )
 async def retrieve_full(
 	case_id: UUID,
-	current_user: OptionalUser,
-	guest_session_id: GuestSessionId,
+	ctx: SessionContextDep,
+	manager: GuestSessionManagerDep,
 	case_repo: MedicalCaseRepo,
 	lab_repo: LabResultRepo,
 	interp_repo: AIInterpretationRepo,
@@ -89,8 +90,9 @@ async def retrieve_full(
 		interp_repo,
 		chat_repo,
 		case_id,
-		user=current_user,
-		guest_session_id=guest_session_id,
+		user=ctx.user,
+		guest_session=ctx.guest_session,
+		manager=manager,
 	)
 	return SuccessResponse(
 		message="OK",
@@ -111,12 +113,18 @@ async def retrieve_full(
 )
 async def retrieve(
 	case_id: UUID,
-	current_user: OptionalUser,
-	guest_session_id: GuestSessionId,
+	ctx: SessionContextDep,
+	manager: GuestSessionManagerDep,
 	case_repo: MedicalCaseRepo,
 ) -> SuccessResponse[MedicalCaseResponse]:
 	"""Retrieve a single medical case (ownership enforced by user or guest_session_id)."""
-	case = await get_case(case_repo, case_id, user=current_user, guest_session_id=guest_session_id)
+	case = await get_case(
+		case_repo,
+		case_id,
+		user=ctx.user,
+		guest_session=ctx.guest_session,
+		manager=manager,
+	)
 	return SuccessResponse(
 		message="OK",
 		data=MedicalCaseResponse.model_validate(case),
