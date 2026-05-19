@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Any
 from uuid import UUID
 
 import redis as redis_sync
@@ -72,6 +73,23 @@ def _get_redis() -> redis_sync.Redis:
 			decode_responses=True,
 		)
 	return _redis_client
+
+
+_event_bus_instance: Any | None = None
+
+
+async def _get_event_bus() -> Any:
+	"""Return the per-process EventBus, connecting on first call."""
+	global _event_bus_instance
+	if _event_bus_instance is None:
+		from app.core.config import get_settings
+		from app.services.events import EventBus
+
+		settings = get_settings()
+		bus = EventBus(settings.CELERY_BROKER_URL)
+		await bus.connect()
+		_event_bus_instance = bus
+	return _event_bus_instance
 
 
 @shared_task(
@@ -187,6 +205,14 @@ async def _mark_pipeline_dead(
 
 		await _set_case_status(session, case_id, "failed")
 
+		await _log_event(
+			session,
+			lab_result_id,
+			"PIPELINE_DEAD_LETTERED",
+			error=error,
+			attempt=attempts,
+		)
+
 		logger.error(
 			"[dlq] marked lab_result_id=%s FAILED after %d attempts: %s",
 			lab_result_id,
@@ -213,14 +239,14 @@ async def _run_pipeline(lab_result_id: UUID) -> None:
 
 		user_id: UUID | None = await _get_case_user_id(session, case_id)
 
-		await _log_event(lab_result_id, "PIPELINE_STARTED")
+		await _log_event(session, lab_result_id, "PIPELINE_STARTED")
 
 		# Guard: storage URL must be present
 		if not file_url:
 			logger.error("[pipeline] lab_result_id=%s has no file URL — marking failed", lab_result_id)
 			await _set_ocr_status(session, lab_result_id, "failed")
 			await _set_case_status(session, case_id, "failed")
-			await _log_event(lab_result_id, "PIPELINE_FAILED", error="No file URL present")
+			await _log_event(session, lab_result_id, "PIPELINE_FAILED", error="No file URL present")
 			await _publish_pipeline_event(user_id, "interpretation_failed", {"case_id": str(case_id)})
 			return
 
@@ -228,6 +254,7 @@ async def _run_pipeline(lab_result_id: UUID) -> None:
 
 		await _set_ocr_status(session, lab_result_id, "processing")
 		await _log_event(
+			session,
 			lab_result_id,
 			"OCR_STARTED",
 			status_before="pending",
@@ -243,6 +270,7 @@ async def _run_pipeline(lab_result_id: UUID) -> None:
 
 			await _set_ocr_status(session, lab_result_id, "complete", extracted_values=extracted)
 			await _log_event(
+				session,
 				lab_result_id,
 				"OCR_COMPLETE",
 				status_before="processing",
@@ -256,6 +284,7 @@ async def _run_pipeline(lab_result_id: UUID) -> None:
 			await _set_ocr_status(session, lab_result_id, "failed")
 			await _set_case_status(session, case_id, "failed")
 			await _log_event(
+				session,
 				lab_result_id,
 				"OCR_FAILED",
 				status_before="processing",
@@ -270,6 +299,7 @@ async def _run_pipeline(lab_result_id: UUID) -> None:
 
 		interp_id = await _create_interpretation(session, case_id)
 		await _log_event(
+			session,
 			lab_result_id,
 			"AI_STARTED",
 			status_before="pending",
@@ -286,6 +316,7 @@ async def _run_pipeline(lab_result_id: UUID) -> None:
 			await _complete_interpretation(session, interp_id, interpretation)
 			await _set_case_status(session, case_id, "complete")
 			await _log_event(
+				session,
 				lab_result_id,
 				"AI_COMPLETE",
 				status_before="processing",
@@ -300,6 +331,7 @@ async def _run_pipeline(lab_result_id: UUID) -> None:
 			await _fail_interpretation(session, interp_id)
 			await _set_case_status(session, case_id, "failed")
 			await _log_event(
+				session,
 				lab_result_id,
 				"AI_FAILED",
 				status_before="processing",
@@ -325,6 +357,7 @@ async def _get_case_user_id(session, case_id: UUID) -> UUID | None:  # type: ign
 
 
 async def _log_event(
+	session,
 	lab_result_id: UUID,
 	event: str,
 	*,
@@ -332,28 +365,23 @@ async def _log_event(
 	status_after: str | None = None,
 	provider: str | None = None,
 	duration_ms: int | None = None,
-	attempt: int = 0,
+	attempt: int | None = None,
 	error: str | None = None,
 ) -> None:
-	"""
-	Audit log stub.
+	"""Write a pipeline audit event. Delegates to PipelineAuditLogRepository."""
+	from app.repositories.pipeline_audit_log import _log_event as _write_audit_log
 
-	replaces this body with a PipelineAuditLog DB write.
-	"""
-	try:
-		logger.info(
-			"[audit] %s | lab_result=%s | %s→%s | provider=%s | %sms | attempt=%d%s",
-			event,
-			lab_result_id,
-			status_before or "-",
-			status_after or "-",
-			provider or "-",
-			duration_ms if duration_ms is not None else "-",
-			attempt,
-			f" | error={error}" if error else "",
-		)
-	except Exception:
-		pass
+	await _write_audit_log(
+		session,
+		lab_result_id=lab_result_id,
+		event=event,
+		status_before=status_before,
+		status_after=status_after,
+		provider=provider,
+		duration_ms=duration_ms,
+		attempt=attempt,
+		error=error,
+	)
 
 
 async def _publish_pipeline_event(
@@ -361,23 +389,20 @@ async def _publish_pipeline_event(
 	event_type: str,
 	payload: dict,
 ) -> None:
-	"""
-	Event bus stub.
-
-	replaces with EventBus.publish().
-	Skipped automatically for guest cases where user_id is None
-	"""
+	"""Publish an event via the EventBus singleton. Skipped for guest cases."""
 	if user_id is None:
 		return  # guest case — no event to publish
 	try:
-		logger.info(
-			"[events] %s | user_id=%s | payload=%s",
+		bus = await _get_event_bus()
+		await bus.publish(user_id, event_type, payload)
+		logger.debug("[events] published %s for user_id=%s", event_type, user_id)
+	except Exception as exc:
+		logger.warning(
+			"[events] failed to publish %s for user_id=%s: %s",
 			event_type,
 			user_id,
-			payload,
+			exc,
 		)
-	except Exception:
-		pass
 
 
 async def _set_ocr_status(session, lab_result_id: UUID, status: str, *, extracted_values=None) -> None:  # type: ignore[no-untyped-def]
