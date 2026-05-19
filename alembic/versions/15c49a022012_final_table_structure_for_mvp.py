@@ -1,8 +1,8 @@
-"""add contact_messages table
+"""Final table structure for MVP
 
-Revision ID: 66defcb90b0f
-Revises: e425a99e7480
-Create Date: 2026-05-15 17:14:29.346333
+Revision ID: 15c49a022012
+Revises: 
+Create Date: 2026-05-19 20:49:49.473324
 
 """
 from typing import Sequence, Union
@@ -12,8 +12,8 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = '66defcb90b0f'
-down_revision: Union[str, Sequence[str], None] = 'e425a99e7480'
+revision: str = '15c49a022012'
+down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -32,6 +32,8 @@ def upgrade() -> None:
     op.create_table('users',
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('email', sa.String(), nullable=False),
+    sa.Column('pending_email', sa.String(), nullable=True),
+    sa.Column('email_change_token', sa.String(), nullable=True),
     sa.Column('password_hash', sa.String(), nullable=True),
     sa.Column('google_id', sa.String(), nullable=True),
     sa.Column('first_name', sa.String(), nullable=False),
@@ -52,17 +54,39 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('email')
     )
-    op.create_table('medical_cases',
+    op.create_table('auth_sessions',
     sa.Column('id', sa.UUID(), nullable=False),
-    sa.Column('user_id', sa.UUID(), nullable=True),
-    sa.Column('guest_session_id', sa.String(), nullable=True),
-    sa.Column('status', sa.Enum('pending', 'processing', 'complete', 'failed', name='medicalcasestatus'), nullable=False),
+    sa.Column('user_id', sa.UUID(), nullable=False),
+    sa.Column('device_id', sa.String(length=255), nullable=False),
+    sa.Column('refresh_token', sa.String(length=512), nullable=False),
+    sa.Column('ip_hash', sa.String(length=64), nullable=True),
+    sa.Column('user_agent', sa.Text(), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
-    sa.Column('completed_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('last_used_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('revoked', sa.Boolean(), nullable=False),
+    sa.Column('revoked_at', sa.DateTime(timezone=True), nullable=True),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index(op.f('ix_medical_cases_user_id'), 'medical_cases', ['user_id'], unique=False)
+    op.create_index(op.f('ix_auth_sessions_refresh_token'), 'auth_sessions', ['refresh_token'], unique=True)
+    op.create_index('ix_auth_sessions_user_id', 'auth_sessions', ['user_id'], unique=False)
+    op.create_table('guest_sessions',
+    sa.Column('id', sa.UUID(), nullable=False),
+    sa.Column('ip_hash', sa.String(length=64), nullable=False),
+    sa.Column('device_fingerprint', sa.String(length=255), nullable=True),
+    sa.Column('chat_count', sa.Integer(), nullable=False),
+    sa.Column('upload_count', sa.Integer(), nullable=False),
+    sa.Column('expires_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('last_active_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('revoked', sa.Boolean(), nullable=False),
+    sa.Column('migrated_user_id', sa.UUID(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['migrated_user_id'], ['users.id'], ondelete='SET NULL'),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index('ix_guest_sessions_expires_at', 'guest_sessions', ['expires_at'], unique=False)
+    op.create_index('ix_guest_sessions_ip_hash_device_fingerprint', 'guest_sessions', ['ip_hash', 'device_fingerprint'], unique=False)
+    op.create_index(op.f('ix_guest_sessions_migrated_user_id'), 'guest_sessions', ['migrated_user_id'], unique=False)
     op.create_table('otp_codes',
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('user_id', sa.UUID(), nullable=False),
@@ -98,6 +122,19 @@ def upgrade() -> None:
     )
     op.create_index('ix_token_blocklist_expires_at', 'token_blocklist', ['expires_at'], unique=False)
     op.create_index(op.f('ix_token_blocklist_jti'), 'token_blocklist', ['jti'], unique=True)
+    op.create_table('medical_cases',
+    sa.Column('id', sa.UUID(), nullable=False),
+    sa.Column('user_id', sa.UUID(), nullable=True),
+    sa.Column('guest_session_id', sa.UUID(), nullable=True),
+    sa.Column('status', sa.Enum('pending', 'processing', 'complete', 'failed', name='medicalcasestatus'), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('completed_at', sa.DateTime(timezone=True), nullable=True),
+    sa.ForeignKeyConstraint(['guest_session_id'], ['guest_sessions.id'], ondelete='SET NULL'),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_medical_cases_guest_session_id'), 'medical_cases', ['guest_session_id'], unique=False)
+    op.create_index(op.f('ix_medical_cases_user_id'), 'medical_cases', ['user_id'], unique=False)
     op.create_table('ai_interpretation',
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('medical_case_id', sa.UUID(), nullable=False),
@@ -154,12 +191,29 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_notification_medical_case_id'), 'notification', ['medical_case_id'], unique=False)
     op.create_index(op.f('ix_notification_user_id'), 'notification', ['user_id'], unique=False)
+    op.create_table('pipeline_audit_logs',
+    sa.Column('id', sa.UUID(), nullable=False),
+    sa.Column('lab_result_id', sa.UUID(), nullable=False),
+    sa.Column('event', sa.String(), nullable=False),
+    sa.Column('status_before', sa.String(), nullable=True),
+    sa.Column('status_after', sa.String(), nullable=True),
+    sa.Column('provider', sa.String(), nullable=True),
+    sa.Column('duration_ms', sa.Integer(), nullable=True),
+    sa.Column('attempt', sa.Integer(), nullable=True),
+    sa.Column('error', sa.Text(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['lab_result_id'], ['lab_results.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_pipeline_audit_logs_lab_result_id'), 'pipeline_audit_logs', ['lab_result_id'], unique=False)
     # ### end Alembic commands ###
 
 
 def downgrade() -> None:
     """Downgrade schema."""
     # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_index(op.f('ix_pipeline_audit_logs_lab_result_id'), table_name='pipeline_audit_logs')
+    op.drop_table('pipeline_audit_logs')
     op.drop_index(op.f('ix_notification_user_id'), table_name='notification')
     op.drop_index(op.f('ix_notification_medical_case_id'), table_name='notification')
     op.drop_table('notification')
@@ -170,6 +224,9 @@ def downgrade() -> None:
     op.drop_table('chat')
     op.drop_index(op.f('ix_ai_interpretation_medical_case_id'), table_name='ai_interpretation')
     op.drop_table('ai_interpretation')
+    op.drop_index(op.f('ix_medical_cases_user_id'), table_name='medical_cases')
+    op.drop_index(op.f('ix_medical_cases_guest_session_id'), table_name='medical_cases')
+    op.drop_table('medical_cases')
     op.drop_index(op.f('ix_token_blocklist_jti'), table_name='token_blocklist')
     op.drop_index('ix_token_blocklist_expires_at', table_name='token_blocklist')
     op.drop_table('token_blocklist')
@@ -178,8 +235,13 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_otp_codes_user_id'), table_name='otp_codes')
     op.drop_index(op.f('ix_otp_codes_purpose'), table_name='otp_codes')
     op.drop_table('otp_codes')
-    op.drop_index(op.f('ix_medical_cases_user_id'), table_name='medical_cases')
-    op.drop_table('medical_cases')
+    op.drop_index(op.f('ix_guest_sessions_migrated_user_id'), table_name='guest_sessions')
+    op.drop_index('ix_guest_sessions_ip_hash_device_fingerprint', table_name='guest_sessions')
+    op.drop_index('ix_guest_sessions_expires_at', table_name='guest_sessions')
+    op.drop_table('guest_sessions')
+    op.drop_index('ix_auth_sessions_user_id', table_name='auth_sessions')
+    op.drop_index(op.f('ix_auth_sessions_refresh_token'), table_name='auth_sessions')
+    op.drop_table('auth_sessions')
     op.drop_table('waitlist')
     op.drop_index(op.f('ix_users_email'), table_name='users')
     op.drop_table('users')
