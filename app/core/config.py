@@ -1,7 +1,7 @@
 import os
 from functools import lru_cache
 
-from pydantic import Field, PostgresDsn
+from pydantic import Field, PostgresDsn, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 APP_ENV = os.getenv("APP_ENV", "staging")
@@ -77,11 +77,9 @@ class Settings(BaseSettings):
 
 	FRONTEND_URL: str = ""
 
-	MINIO_URL: str
-	MINIO_USERNAME: str
-	MINIO_PASSWORD: str
-	MINIO_BUCKET_NAME: str
-	MINIO_SECURE: bool = False
+	MEDIA_DIR: str = "media"
+	RESEND_API_KEY: str | None = None
+	RESEND_FROM_EMAIL: str = ""
 
 	@field_validator("RESEND_FROM_EMAIL", mode="after")
 	@classmethod

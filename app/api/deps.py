@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Annotated
 from uuid import UUID
 
@@ -173,3 +174,19 @@ def get_guest_session_id(x_guest_session_id: str | None = Header(None)) -> str |
 
 OptionalUser = Annotated[User | None, Depends(get_optional_user)]
 GuestSessionId = Annotated[str | None, Depends(get_guest_session_id)]
+
+
+@dataclass
+class SessionContext:
+	user: User | None
+	guest_session_id: str | None
+
+
+def get_session_context(
+	user: OptionalUser,
+	guest_session_id: GuestSessionId,
+) -> SessionContext:
+	return SessionContext(user=user, guest_session_id=guest_session_id)
+
+
+SessionContextDep = Annotated[SessionContext, Depends(get_session_context)]
