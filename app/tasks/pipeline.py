@@ -21,13 +21,16 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Any
 from uuid import UUID
 
+import redis as redis_sync
 from celery import shared_task
 
-logger = logging.getLogger(__name__)
+from app.core.celery_app import PIPELINE_DLQ_QUEUE, PIPELINE_QUEUE
 
-PIPELINE_QUEUE = "pipeline"
+logger = logging.getLogger(__name__)
+_LOCK_TTL_SECONDS = 300
 
 # Valid forward transitions — FAILED is reachable from any state.
 _VALID_OCR_TRANSITIONS: dict[str, set[str]] = {
@@ -45,8 +48,10 @@ _VALID_CASE_TRANSITIONS: dict[str, set[str]] = {
 }
 
 # One persistent event loop per worker process.
-#  Celery tasks are synchronous, but our pipeline stages are async, so we need to bridge the gap.
 _worker_loop: asyncio.AbstractEventLoop | None = None
+
+# One sync Redis client per worker process — reused across task calls.
+_redis_client: redis_sync.Redis | None = None
 
 
 def _get_worker_loop() -> asyncio.AbstractEventLoop:
@@ -57,29 +62,169 @@ def _get_worker_loop() -> asyncio.AbstractEventLoop:
 	return _worker_loop
 
 
+def _get_redis() -> redis_sync.Redis:
+	global _redis_client
+	if _redis_client is None:
+		from app.core.config import get_settings
+
+		settings = get_settings()
+		_redis_client = redis_sync.Redis.from_url(
+			settings.CELERY_BROKER_URL,
+			decode_responses=True,
+		)
+	return _redis_client
+
+
+_event_bus_instance: Any | None = None
+
+
+async def _get_event_bus() -> Any:
+	"""Return the per-process EventBus, connecting on first call."""
+	global _event_bus_instance
+	if _event_bus_instance is None:
+		from app.core.config import get_settings
+		from app.services.events import EventBus
+
+		settings = get_settings()
+		bus = EventBus(settings.CELERY_BROKER_URL)
+		await bus.connect()
+		_event_bus_instance = bus
+	return _event_bus_instance
+
+
 @shared_task(
 	bind=True,
 	name="app.tasks.pipeline.run_lab_result_pipeline",
 	queue=PIPELINE_QUEUE,
 	acks_late=True,
-	max_retries=2,
-	default_retry_delay=60,
+	max_retries=3,
+	retry_backoff=True,
+	retry_backoff_max=600,
+	retry_jitter=True,
 )
-def run_lab_result_pipeline(self, lab_result_id: str) -> None:  # noqa: ARG001
-	"""Celery task entry point."""
+def run_lab_result_pipeline(self, lab_result_id: str) -> None:
+	"""Celery task entry point.
+
+	Retry policy: exponential backoff with jitter, max 3 retries.
+	If all retries are exhausted the task is forwarded to the dead-letter
+	queue (pipeline.dlq)
+	"""
+	lock_key = f"pipeline:lock:{lab_result_id}"
+	lock = _get_redis().lock(
+		lock_key,
+		timeout=_LOCK_TTL_SECONDS,
+		blocking=False,
+	)
+
+	if not lock.acquire():
+		logger.info(
+			"[pipeline] lock already held for lab_result_id=%s — skipping duplicate",
+			lab_result_id,
+		)
+		return
+
 	try:
 		loop = _get_worker_loop()
 		loop.run_until_complete(_run_pipeline(UUID(lab_result_id)))
 	except Exception as exc:
-		logger.exception("[pipeline] unhandled error for lab_result_id=%s", lab_result_id)
+		logger.exception(
+			"[pipeline] error on attempt %d/%d for lab_result_id=%s",
+			self.request.retries + 1,
+			self.max_retries + 1,
+			lab_result_id,
+		)
+		if self.request.retries >= self.max_retries:
+			logger.error(
+				"[pipeline] all retries exhausted for lab_result_id=%s — sending to DLQ",
+				lab_result_id,
+			)
+			dead_letter_pipeline.delay(
+				lab_result_id=lab_result_id,
+				error=str(exc),
+				attempts=self.request.retries + 1,
+			)
+			return
 		raise self.retry(exc=exc) from exc
+	finally:
+		try:
+			lock.release()
+		except Exception:
+			pass
 
 
 #  Async pipeline
 
 
+@shared_task(
+	name="app.tasks.pipeline.dead_letter_pipeline",
+	queue=PIPELINE_DLQ_QUEUE,
+	acks_late=True,
+	max_retries=0,
+)
+def dead_letter_pipeline(
+	lab_result_id: str,
+	error: str,
+	attempts: int,
+) -> None:
+	"""Handle a pipeline task that has exhausted all retries.
+
+	Ensures the case is marked FAILED in the DB and records the failure
+	"""
+	logger.error(
+		"[dlq] pipeline permanently failed — lab_result_id=%s, attempts=%d, error=%r",
+		lab_result_id,
+		attempts,
+		error,
+	)
+	loop = _get_worker_loop()
+	loop.run_until_complete(_mark_pipeline_dead(UUID(lab_result_id), error, attempts))
+
+
+async def _mark_pipeline_dead(
+	lab_result_id: UUID,
+	error: str,
+	attempts: int,
+) -> None:
+	"""
+	Ensures the lab result and case are in FAILED state after DLQ dispatch.
+	"""
+	from app.db.session import AsyncSessionLocal
+	from app.models.lab_result import OCRStatus
+
+	async with AsyncSessionLocal() as session:
+		lab_result = await _get_lab_result(session, lab_result_id)
+
+		if lab_result is None:
+			logger.warning("[dlq] lab_result_id=%s not found — nothing to mark", lab_result_id)
+			return
+
+		case_id: UUID = lab_result.medical_case_id
+
+		if lab_result.ocr_status not in (OCRStatus.COMPLETE, OCRStatus.FAILED):
+			await _set_ocr_status(session, lab_result_id, "failed")
+
+		await _set_case_status(session, case_id, "failed")
+
+		await _log_event(
+			session,
+			lab_result_id,
+			"PIPELINE_DEAD_LETTERED",
+			error=error,
+			attempt=attempts,
+		)
+
+		logger.error(
+			"[dlq] marked lab_result_id=%s FAILED after %d attempts: %s",
+			lab_result_id,
+			attempts,
+			error,
+		)
+
+
 async def _run_pipeline(lab_result_id: UUID) -> None:
 	"""Execute the full OCR → AI pipeline for one lab result."""
+	import time
+
 	from app.db.session import AsyncSessionLocal
 
 	async with AsyncSessionLocal() as session:
@@ -92,54 +237,172 @@ async def _run_pipeline(lab_result_id: UUID) -> None:
 		case_id: UUID = lab_result.medical_case_id
 		file_url: str = (lab_result.file or {}).get("url", "")
 
+		user_id: UUID | None = await _get_case_user_id(session, case_id)
+
+		await _log_event(session, lab_result_id, "PIPELINE_STARTED")
+
 		# Guard: storage URL must be present
 		if not file_url:
 			logger.error("[pipeline] lab_result_id=%s has no file URL — marking failed", lab_result_id)
 			await _set_ocr_status(session, lab_result_id, "failed")
 			await _set_case_status(session, case_id, "failed")
+			await _log_event(session, lab_result_id, "PIPELINE_FAILED", error="No file URL present")
+			await _publish_pipeline_event(user_id, "interpretation_failed", {"case_id": str(case_id)})
 			return
 
 		# Stage 1: OCR
 
 		await _set_ocr_status(session, lab_result_id, "processing")
-		logger.info("[pipeline] stage 1 — OCR starting for lab_result_id=%s", lab_result_id)
+		await _log_event(
+			session,
+			lab_result_id,
+			"OCR_STARTED",
+			status_before="pending",
+			status_after="processing",
+		)
 
+		ocr_start = time.monotonic()
 		try:
 			from app.services.ocr import OCRExtractionError, extract_lab_values
 
 			extracted = await extract_lab_values(file_url)
+			ocr_ms = int((time.monotonic() - ocr_start) * 1000)
+
 			await _set_ocr_status(session, lab_result_id, "complete", extracted_values=extracted)
-			logger.info("[pipeline] stage 1 — OCR complete for lab_result_id=%s", lab_result_id)
+			await _log_event(
+				session,
+				lab_result_id,
+				"OCR_COMPLETE",
+				status_before="processing",
+				status_after="complete",
+				duration_ms=ocr_ms,
+			)
 
 		except OCRExtractionError as exc:
+			ocr_ms = int((time.monotonic() - ocr_start) * 1000)
 			logger.error("[pipeline] stage 1 — OCR failed for lab_result_id=%s: %s", lab_result_id, exc)
 			await _set_ocr_status(session, lab_result_id, "failed")
 			await _set_case_status(session, case_id, "failed")
+			await _log_event(
+				session,
+				lab_result_id,
+				"OCR_FAILED",
+				status_before="processing",
+				status_after="failed",
+				duration_ms=ocr_ms,
+				error=str(exc),
+			)
+			await _publish_pipeline_event(user_id, "interpretation_failed", {"case_id": str(case_id)})
 			return
 
 		# Stage 2: AI interpretation
 
 		interp_id = await _create_interpretation(session, case_id)
-		logger.info("[pipeline] stage 2 — AI interpretation starting, interp_id=%s", interp_id)
+		await _log_event(
+			session,
+			lab_result_id,
+			"AI_STARTED",
+			status_before="pending",
+			status_after="processing",
+		)
 
+		ai_start = time.monotonic()
 		try:
 			from app.services.ai import InterpretationError, generate_interpretation
 
 			interpretation = await generate_interpretation(extracted)
+			ai_ms = int((time.monotonic() - ai_start) * 1000)
+
 			await _complete_interpretation(session, interp_id, interpretation)
 			await _set_case_status(session, case_id, "complete")
-			logger.info("[pipeline] stage 2 — complete for lab_result_id=%s", lab_result_id)
+			await _log_event(
+				session,
+				lab_result_id,
+				"AI_COMPLETE",
+				status_before="processing",
+				status_after="complete",
+				duration_ms=ai_ms,
+			)
+			await _publish_pipeline_event(user_id, "interpretation_ready", {"case_id": str(case_id)})
 
 		except InterpretationError as exc:
+			ai_ms = int((time.monotonic() - ai_start) * 1000)
 			logger.error("[pipeline] stage 2 — AI failed for lab_result_id=%s: %s", lab_result_id, exc)
 			await _fail_interpretation(session, interp_id)
 			await _set_case_status(session, case_id, "failed")
+			await _log_event(
+				session,
+				lab_result_id,
+				"AI_FAILED",
+				status_before="processing",
+				status_after="failed",
+				duration_ms=ai_ms,
+				error=str(exc),
+			)
+			await _publish_pipeline_event(user_id, "interpretation_failed", {"case_id": str(case_id)})
 
 
 async def _get_lab_result(session, lab_result_id: UUID):  # type: ignore[no-untyped-def]
 	from app.models.lab_result import LabResult
 
 	return await session.get(LabResult, lab_result_id)
+
+
+async def _get_case_user_id(session, case_id: UUID) -> UUID | None:  # type: ignore[no-untyped-def]
+	"""Return the user_id for a case, or None for guest cases."""
+	from app.models.medical_case import MedicalCase
+
+	case = await session.get(MedicalCase, case_id)
+	return case.user_id if case else None
+
+
+async def _log_event(
+	session,
+	lab_result_id: UUID,
+	event: str,
+	*,
+	status_before: str | None = None,
+	status_after: str | None = None,
+	provider: str | None = None,
+	duration_ms: int | None = None,
+	attempt: int | None = None,
+	error: str | None = None,
+) -> None:
+	"""Write a pipeline audit event. Delegates to PipelineAuditLogRepository."""
+	from app.repositories.pipeline_audit_log import _log_event as _write_audit_log
+
+	await _write_audit_log(
+		session,
+		lab_result_id=lab_result_id,
+		event=event,
+		status_before=status_before,
+		status_after=status_after,
+		provider=provider,
+		duration_ms=duration_ms,
+		attempt=attempt,
+		error=error,
+	)
+
+
+async def _publish_pipeline_event(
+	user_id: UUID | None,
+	event_type: str,
+	payload: dict,
+) -> None:
+	"""Publish an event via the EventBus singleton. Skipped for guest cases."""
+	if user_id is None:
+		return  # guest case — no event to publish
+	try:
+		bus = await _get_event_bus()
+		await bus.publish(user_id, event_type, payload)
+		logger.debug("[events] published %s for user_id=%s", event_type, user_id)
+	except Exception as exc:
+		logger.warning(
+			"[events] failed to publish %s for user_id=%s: %s",
+			event_type,
+			user_id,
+			exc,
+		)
 
 
 async def _set_ocr_status(session, lab_result_id: UUID, status: str, *, extracted_values=None) -> None:  # type: ignore[no-untyped-def]
