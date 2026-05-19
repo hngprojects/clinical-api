@@ -1,8 +1,8 @@
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
-from app.models.chat import Chat
+from app.models.chat import Chat, SenderType
 from app.repositories.base import BaseRepository
 
 
@@ -30,6 +30,25 @@ class ChatRepository(BaseRepository[Chat]):
 			select(func.count()).select_from(Chat).where(Chat.medical_case_id == medical_case_id)
 		)
 		return result.scalar_one()
+
+	async def assign_user_to_case_messages(self, case_ids: list[UUID], user_id: UUID) -> int:
+		if not case_ids:
+			return 0
+		result = await self._session.execute(
+			update(Chat).where(Chat.medical_case_id.in_(case_ids), Chat.user_id.is_(None)).values(user_id=user_id)
+		)
+		return int(result.rowcount or 0)
+
+	async def count_patient_messages_by_case(self, medical_case_id: UUID) -> int:
+		result = await self._session.execute(
+			select(func.count())
+			.select_from(Chat)
+			.where(
+				Chat.medical_case_id == medical_case_id,
+				Chat.sender_type == SenderType.PATIENT,
+			)
+		)
+		return int(result.scalar_one())
 
 	async def list_by_user(
 		self,

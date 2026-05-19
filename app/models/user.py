@@ -11,6 +11,7 @@ from app.models.base import Base
 
 if TYPE_CHECKING:
 	from app.models.chat import Chat
+	from app.models.guest_session import GuestSession
 	from app.models.medical_case import MedicalCase
 	from app.models.notification import Notification
 	from app.models.otp import OtpCode
@@ -63,6 +64,10 @@ class User(Base):
 	chats: Mapped[list["Chat"]] = relationship(back_populates="user")
 	notifications: Mapped[list["Notification"]] = relationship(back_populates="user")
 	otp_codes: Mapped[list["OtpCode"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+	migrated_guest_sessions: Mapped[list["GuestSession"]] = relationship(
+		foreign_keys="GuestSession.migrated_user_id",
+		back_populates="migrated_user",
+	)
 
 	@property
 	def full_name(self) -> str:

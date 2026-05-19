@@ -21,7 +21,6 @@ from app.services.auth.otp import (
 	create_otp_for_user,
 	verify_otp_for_user,
 )
-from app.services.auth.tokens import create_access_token, create_refresh_token
 
 
 async def signup_user(
@@ -79,8 +78,8 @@ async def authenticate_credentials(
 	*,
 	email: str,
 	password: str,
-) -> tuple[User, str, int, str]:
-	"""Verify email + password and return (user, access_token, ttl_seconds, refresh_token).
+) -> User:
+	"""Verify email + password and return the authenticated user.
 
 	Raises:
 		NotFoundError: if the email is not registered.
@@ -101,10 +100,7 @@ async def authenticate_credentials(
 	user.last_login_at = now
 	await user_repo.commit()
 	await user_repo.refresh(user)
-
-	token, ttl_seconds = create_access_token(user.id)
-	refresh_token = await create_refresh_token(user.id)
-	return user, token, ttl_seconds, refresh_token
+	return user
 
 
 async def authenticate_otp(
@@ -113,8 +109,8 @@ async def authenticate_otp(
 	*,
 	email: str,
 	code: str,
-) -> tuple[User, str, int, str]:
-	"""Verify an email-verification OTP and return (user, access_token, ttl_seconds, refresh_token).
+) -> User:
+	"""Verify an email-verification OTP and return the user.
 
 	Flips `is_email_verified=True` on success.
 	"""
@@ -136,10 +132,7 @@ async def authenticate_otp(
 
 	await user_repo.commit()
 	await user_repo.refresh(user)
-
-	token, ttl_seconds = create_access_token(user.id)
-	refresh_token = await create_refresh_token(user.id)
-	return user, token, ttl_seconds, refresh_token
+	return user
 
 
 async def resend_otp(
