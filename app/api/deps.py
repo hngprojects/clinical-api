@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Annotated
 from uuid import UUID
 
@@ -14,6 +15,7 @@ from app.repositories.chat import ChatRepository
 from app.repositories.contact import ContactRepository
 from app.repositories.lab_result import LabResultRepository
 from app.repositories.medical_case import MedicalCaseRepository
+from app.repositories.medical_upload import MedicalUploadRepository
 from app.repositories.notification import NotificationRepository
 from app.repositories.otp import OtpRepository
 from app.repositories.password_reset import PasswordResetRepository
@@ -72,6 +74,10 @@ def get_contact_repo(session: DBSession) -> ContactRepository:
 	return ContactRepository(session)
 
 
+def get_medical_upload_repo(session: DBSession) -> MedicalUploadRepository:
+	return MedicalUploadRepository(session)
+
+
 # Annotated shortcuts
 UserRepo = Annotated[UserRepository, Depends(get_user_repo)]
 OtpRepo = Annotated[OtpRepository, Depends(get_otp_repo)]
@@ -84,6 +90,7 @@ ChatRepo = Annotated[ChatRepository, Depends(get_chat_repo)]
 NotificationRepo = Annotated[NotificationRepository, Depends(get_notification_repo)]
 WaitlistRepo = Annotated[WaitlistRepository, Depends(get_waitlist_repo)]
 ContactRepo = Annotated[ContactRepository, Depends(get_contact_repo)]
+MedicalUploadRepo = Annotated[MedicalUploadRepository, Depends(get_medical_upload_repo)]
 
 
 # Auth guard
@@ -167,3 +174,19 @@ def get_guest_session_id(x_guest_session_id: str | None = Header(None)) -> str |
 
 OptionalUser = Annotated[User | None, Depends(get_optional_user)]
 GuestSessionId = Annotated[str | None, Depends(get_guest_session_id)]
+
+
+@dataclass
+class SessionContext:
+	user: User | None
+	guest_session_id: str | None
+
+
+def get_session_context(
+	user: OptionalUser,
+	guest_session_id: GuestSessionId,
+) -> SessionContext:
+	return SessionContext(user=user, guest_session_id=guest_session_id)
+
+
+SessionContextDep = Annotated[SessionContext, Depends(get_session_context)]

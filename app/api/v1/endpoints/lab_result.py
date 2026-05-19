@@ -1,15 +1,24 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, File, Query, Request, UploadFile, status
 
-from app.api.deps import CurrentUser, GuestSessionId, LabResultRepo, MedicalCaseRepo, OptionalUser
+from app.api.deps import (
+	CurrentUser,
+	GuestSessionId,
+	LabResultRepo,
+	MedicalCaseRepo,
+	MedicalUploadRepo,
+	OptionalUser,
+	SessionContextDep,
+)
+from app.core.exceptions import BadRequestError, UnauthorizedError
 from app.core.responses import SuccessResponse
-from app.schemas.lab_result import LabResultCreate, LabResultResponse, UploadRequest, UploadResponse
+from app.schemas.lab_result import LabResultCreate, LabResultResponse, UploadResponse
 from app.services.lab_result import (
 	create_lab_result,
 	get_lab_result,
+	handle_file_upload,
 	list_lab_results_for_case,
-	upload_lab_result,
 )
 from app.services.medical_case import get_case
 
@@ -22,18 +31,52 @@ router = APIRouter(tags=["lab-results"])
 	status_code=status.HTTP_201_CREATED,
 )
 async def upload(
-	payload: UploadRequest,
+	request: Request,
 	lab_repo: LabResultRepo,
 	case_repo: MedicalCaseRepo,
+	upload_repo: MedicalUploadRepo,
+	session_context: SessionContextDep,
+	file: UploadFile = File(...),
 ) -> SuccessResponse[UploadResponse]:
 	"""Upload a lab result file.
 
 	Creates a MedicalCase and a LabResult in one action, then triggers
-	the OCR → AI pipeline. This is the primary upload path — the frontend
-	sends one request and polls GET /cases/{case_id}/interpretations/latest
-	for the result.
+	the OCR → AI pipeline. The upload is authenticated by user or guest session.
 	"""
-	case, lab_result = await upload_lab_result(lab_repo, case_repo, payload, None)
+	if session_context.user is None and not session_context.guest_session_id:
+		raise UnauthorizedError("Missing authentication or guest session.")
+
+	valid_media_types = {
+		"image/jpeg",
+		"image/png",
+		"image/gif",
+		"image/webp",
+		"application/pdf",
+	}
+	if file.content_type not in valid_media_types:
+		raise BadRequestError("Unsupported file type. Acceptable types are JPEG, PNG, GIF, WebP, or PDF.")
+
+	file_size = file.size
+	file_contents = await file.read()
+	if file_size is not None:
+		if file_size > 10 * 1024 * 1024:
+			raise BadRequestError("File size must be 10MB or smaller.")
+	elif len(file_contents) > 10 * 1024 * 1024:
+		raise BadRequestError("File size must be 10MB or smaller.")
+
+	public_url_base = str(request.base_url).rstrip("/")
+	case, lab_result = await handle_file_upload(
+		lab_repo,
+		case_repo,
+		upload_repo,
+		file_contents,
+		file.filename,
+		file.content_type or "application/octet-stream",
+		session_context.user,
+		session_context.guest_session_id,
+		public_url_base,
+	)
+
 	return SuccessResponse(
 		message="Upload received. Processing started.",
 		data=UploadResponse(

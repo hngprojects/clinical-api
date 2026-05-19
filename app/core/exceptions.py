@@ -9,6 +9,20 @@ from app.core.responses import ErrorDetail, ErrorResponse
 logger = logging.getLogger(__name__)
 
 
+class ServerError(HTTPException):
+	"""Raised when an error is caught."""
+
+	def __init__(self, message: str = "Server error") -> None:
+		super().__init__(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=message)
+
+
+class BadGatewayError(HTTPException):
+	"""Raised when an error occur when interacting with a external service."""
+
+	def __init__(self, message: str = "Gateway error") -> None:
+		super().__init__(status_code=status.HTTP_502_BAD_GATEWAY, detail=message)
+
+
 class EmailError(HTTPException):
 	"""Raised when an email error occurs."""
 
