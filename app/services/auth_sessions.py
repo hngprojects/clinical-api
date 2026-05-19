@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 import jwt
 
+from app.core.config import get_settings
 from app.core.exceptions import NotFoundError, UnauthorizedError
 from app.core.security import hash_opaque_token
 from app.models.auth_session import AuthSession
@@ -45,6 +46,23 @@ class AuthSessionManager:
 		if platform and platform.strip():
 			return f"{platform.strip().lower()}:{normalized}"
 		return normalized
+
+	def _is_expired(self, session: AuthSession, *, now: datetime) -> bool:
+		settings = get_settings()
+		last_activity = session.last_used_at or session.created_at
+		inactive_deadline = last_activity + timedelta(days=settings.AUTH_SESSION_INACTIVITY_DAYS)
+		absolute_deadline = session.created_at + timedelta(days=settings.AUTH_SESSION_ABSOLUTE_DAYS)
+		return now > inactive_deadline or now > absolute_deadline
+
+	async def _ensure_active(self, session: AuthSession) -> AuthSession:
+		now = self._now()
+		if session.revoked or self._is_expired(session, now=now):
+			if not session.revoked:
+				session.revoked = True
+				session.revoked_at = now
+				await self._repo.commit()
+			raise UnauthorizedError("Session expired or revoked.")
+		return session
 
 	async def create(
 		self,
@@ -94,9 +112,9 @@ class AuthSessionManager:
 			raise UnauthorizedError("Invalid refresh token.") from exc
 
 		row = await self._repo.get_by_refresh_token(self._refresh_hash(raw_refresh_token))
-		if row is None or row.revoked:
+		if row is None:
 			raise UnauthorizedError("Refresh token has been revoked.")
-		return row
+		return await self._ensure_active(row)
 
 	async def rotate_refresh(self, raw_refresh_token: str) -> AuthSessionIssue:
 		"""Validate the current refresh token and issue a rotated pair for the same device."""
@@ -151,5 +169,16 @@ class AuthSessionManager:
 		return await self._repo.revoke_all_for_user(user_id, revoked_at=now)
 
 	async def list_sessions(self, user_id: UUID) -> list[AuthSession]:
-		"""List non-revoked sessions for the user (newest first)."""
-		return await self._repo.list_active_by_user(user_id)
+		"""List non-revoked, non-expired sessions for the user (newest first)."""
+		now = self._now()
+		sessions = await self._repo.list_active_by_user(user_id)
+		active: list[AuthSession] = []
+		for session in sessions:
+			if self._is_expired(session, now=now):
+				session.revoked = True
+				session.revoked_at = now
+			else:
+				active.append(session)
+		if len(active) != len(sessions):
+			await self._repo.commit()
+		return active
