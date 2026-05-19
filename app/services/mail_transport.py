@@ -151,18 +151,22 @@ async def send_with_fallback(subject: str, html: str, to: str) -> dict:
 	brevo = _build_brevo_transport()
 	smtp = _build_smtp_transport()
 
+	error_message = "No email providers configured"
+
 	if brevo:
 		try:
 			return {"provider": "brevo", "result": await brevo.send(subject=subject, html=html, to=to)}
 		except EmailError as exc:
+			error_message = exc.detail
 			logger.warning("Brevo failed, will attempt next provider: %s", exc)
 			# fall through to next provider
 
 	if smtp:
 		try:
 			return {"provider": "smtp", "result": await smtp.send(subject=subject, html=html, to=to)}
-		except EmailError:
+		except EmailError as exc:
+			error_message = exc.detail
 			logger.exception("SMTP fallback also failed")
 			raise
 
-	raise EmailError("No email providers configured")
+	raise EmailError(error_message)

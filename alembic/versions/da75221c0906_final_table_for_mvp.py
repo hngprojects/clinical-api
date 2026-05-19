@@ -1,8 +1,8 @@
-"""Final table structure for MVP
+"""Final table for MVP
 
-Revision ID: 15c49a022012
+Revision ID: da75221c0906
 Revises: 
-Create Date: 2026-05-19 20:49:49.473324
+Create Date: 2026-05-19 21:02:53.841604
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = '15c49a022012'
+revision: str = 'da75221c0906'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

@@ -41,7 +41,6 @@ class UploadRequest(BaseModel):
 	"""
 
 	file: FileObject
-	guest_session_id: str | None = None
 
 	@field_validator("file", mode="before")
 	@classmethod

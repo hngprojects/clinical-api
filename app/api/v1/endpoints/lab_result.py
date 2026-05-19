@@ -46,7 +46,6 @@ async def upload(
 		case_repo,
 		payload,
 		ctx.user,
-		header_guest_session_id=payload.guest_session_id,
 		guest_session=ctx.guest_session,
 		manager=manager,
 	)
