@@ -106,6 +106,8 @@ def get_guest_session_manager(
 	guest_session_repo: Annotated[GuestSessionRepository, Depends(get_guest_session_repo)],
 ) -> GuestSessionManager:
 	return GuestSessionManager(guest_session_repo)
+
+
 def get_pipeline_audit_log_repo(session: DBSession) -> PipelineAuditLogRepository:
 	return PipelineAuditLogRepository(session)
 
