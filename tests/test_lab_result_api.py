@@ -187,7 +187,7 @@ async def test_unauthenticated_upload_returns_401(client):
 
 async def test_wrong_user_cannot_upload_to_another_users_case(client, auth_headers):
     """
-    A user who did not create a case receives 403 when trying to upload to it.
+    A user who did not create a case receives 404 when trying to upload to it.
     Also verifies that the pipeline task is NOT dispatched when the request is rejected.
     """
     # User A (test_user via auth_headers) creates a case
@@ -220,7 +220,7 @@ async def test_wrong_user_cannot_upload_to_another_users_case(client, auth_heade
             headers=other_headers,
         )
 
-    assert response.status_code == 403
+    assert response.status_code == 404
     mock_task.delay.assert_not_called()
 
     async with AsyncSessionLocal() as session:

@@ -90,7 +90,7 @@ async def test_pipeline_log_returns_404_for_missing_case(client, auth_headers):
     assert resp.status_code == 404
 
 
-async def test_pipeline_log_returns_403_for_wrong_user(client, test_user):
+async def test_pipeline_log_returns_404_for_wrong_user(client, test_user):
     case_id, _ = await _seed_case_with_logs(test_user)
 
     other = User(
@@ -111,7 +111,7 @@ async def test_pipeline_log_returns_403_for_wrong_user(client, test_user):
         f"{API}/cases/{case_id}/pipeline-log",
         headers={"Authorization": f"Bearer {token}"},
     )
-    assert resp.status_code == 403
+    assert resp.status_code == 404
 
     async with AsyncSessionLocal() as session:
         existing = await session.get(User, other.id)

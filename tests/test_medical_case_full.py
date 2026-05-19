@@ -107,7 +107,7 @@ async def test_full_case_without_interpretation_returns_null(client, test_user, 
 	assert data["chats"] == []
 
 
-async def test_full_case_wrong_user_returns_403(client, test_user):
+async def test_full_case_wrong_user_returns_404(client, test_user):
 	case_id = await _seed_case_minimal(test_user, with_interp=False, with_chat=False)
 
 	other = User(
@@ -129,7 +129,7 @@ async def test_full_case_wrong_user_returns_403(client, test_user):
 		headers={"Authorization": f"Bearer {token}"},
 	)
 
-	assert resp.status_code == 403
+	assert resp.status_code == 404
 
 	async with AsyncSessionLocal() as session:
 		await session.delete(other)
