@@ -25,6 +25,7 @@ from app.api.deps import (
 from app.core.config import get_settings
 from app.core.exceptions import UnauthorizedError
 from app.core.responses import SuccessResponse
+from app.core.security import hash_opaque_token
 from app.models.otp import OtpPurpose
 from app.schemas.auth import (
 	AuthSessionResponse,
@@ -51,12 +52,13 @@ from app.services.auth import (
 	signup_user,
 )
 from app.services.auth.blocklist import is_token_revoked, revoke_token
-from app.services.guest import migrate_guest_session_to_user, normalize_guest_session_id
+from app.services.guest import migrate_guest_session_to_user
 from app.services.oauth import (
 	exchange_google_code,
 	fetch_google_user_info,
 	get_or_create_google_user,
 )
+from app.services.oauth_state import create_oauth_state, decode_oauth_state
 from app.tasks.emails import send_otp_email_task, send_password_reset_email_task
 
 logger = logging.getLogger(__name__)
@@ -336,16 +338,23 @@ async def logout(
 @router.get("/google")
 async def google_login(
 	guest_session_id: str | None = Query(None, description="Guest session to migrate after OAuth"),
+	device_id: str | None = Query(None, description="Client device identifier for per-device auth session"),
+	platform: str | None = Query("web", description="Client platform (web, ios, android)"),
 ) -> RedirectResponse:
 	"""Redirect to Google's OAuth consent screen."""
 	settings = get_settings()
+	oauth_state = create_oauth_state(
+		guest_session_id=guest_session_id,
+		device_id=device_id,
+		platform=platform,
+	)
 	query_params = urlencode(
 		{
 			"client_id": settings.GOOGLE_CLIENT_ID,
 			"redirect_uri": settings.GOOGLE_REDIRECT_URI,
 			"response_type": "code",
 			"scope": "openid email profile",
-			"state": guest_session_id or "",
+			"state": oauth_state,
 		}
 	)
 	google_auth_url = f"https://accounts.google.com/o/oauth2/v2/auth?{query_params}"
@@ -373,18 +382,30 @@ async def google_callback(
 	google_user = await fetch_google_user_info(google_access_token)
 	user = await get_or_create_google_user(user_repo, google_user)
 
-	if state.strip() and normalize_guest_session_id(state):
+	oauth_ctx = decode_oauth_state(state)
+	guest_id = oauth_ctx.guest_session_id if oauth_ctx else None
+	if guest_id:
 		await migrate_guest_session_to_user(
 			case_repo,
 			chat_repo,
-			guest_session_id=state,
+			guest_session_id=guest_id,
 			user_id=user.id,
 		)
 
+	if oauth_ctx and oauth_ctx.device_id:
+		oauth_device_id = oauth_ctx.device_id
+	elif oauth_ctx and oauth_ctx.guest_session_id:
+		oauth_device_id = f"guest-{oauth_ctx.guest_session_id[:8]}"
+	else:
+		ua = request.headers.get("user-agent", "unknown")
+		oauth_device_id = f"google-{hash_opaque_token(ua)[:16]}"
+
+	oauth_platform = oauth_ctx.platform if oauth_ctx and oauth_ctx.platform else "web"
+
 	issue = await auth_manager.create(
 		user.id,
-		"google-oauth",
-		platform="web",
+		oauth_device_id,
+		platform=oauth_platform,
 		ip_hash=ip_hash,
 		user_agent=request.headers.get("user-agent"),
 	)
