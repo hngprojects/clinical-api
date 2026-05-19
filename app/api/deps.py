@@ -27,6 +27,7 @@ from app.repositories.medical_case import MedicalCaseRepository
 from app.repositories.notification import NotificationRepository
 from app.repositories.otp import OtpRepository
 from app.repositories.password_reset import PasswordResetRepository
+from app.repositories.pipeline_audit_log import PipelineAuditLogRepository
 from app.repositories.token_blocklist import TokenBlocklistRepository
 from app.repositories.user import UserRepository
 from app.repositories.waitlist import WaitlistRepository
@@ -34,6 +35,8 @@ from app.services.auth.tokens import decode_access_token
 from app.services.auth_sessions import AuthSessionManager
 from app.services.guest import normalize_guest_session_id, to_guest_session_uuid
 from app.services.guest_sessions import GuestSessionManager
+from app.services.events import EventBus
+from app.services.websocket import ConnectionRegistry
 
 DBSession = Annotated[AsyncSession, Depends(get_session)]
 
@@ -103,6 +106,8 @@ def get_guest_session_manager(
 	guest_session_repo: Annotated[GuestSessionRepository, Depends(get_guest_session_repo)],
 ) -> GuestSessionManager:
 	return GuestSessionManager(guest_session_repo)
+def get_pipeline_audit_log_repo(session: DBSession) -> PipelineAuditLogRepository:
+	return PipelineAuditLogRepository(session)
 
 
 # Annotated shortcuts
@@ -121,6 +126,7 @@ GuestSessionRepo = Annotated[GuestSessionRepository, Depends(get_guest_session_r
 AuthSessionRepo = Annotated[AuthSessionRepository, Depends(get_auth_session_repo)]
 AuthSessionManagerDep = Annotated[AuthSessionManager, Depends(get_auth_session_manager)]
 GuestSessionManagerDep = Annotated[GuestSessionManager, Depends(get_guest_session_manager)]
+PipelineAuditLogRepo = Annotated[PipelineAuditLogRepository, Depends(get_pipeline_audit_log_repo)]
 
 
 # Auth guard
@@ -259,3 +265,15 @@ DeviceFingerprint = Annotated[str | None, Depends(get_device_fingerprint)]
 ClientIpHash = Annotated[str, Depends(get_ip_hash)]
 SessionContextDep = Annotated[SessionContext, Depends(get_session_context)]
 CurrentGuestSessionDep = Annotated[GuestSession, Depends(get_current_guest_session)]
+
+
+def get_event_bus(request: Request) -> EventBus:
+	return request.app.state.event_bus
+
+
+def get_connection_registry(request: Request) -> ConnectionRegistry:
+	return request.app.state.connection_registry
+
+
+EventBusDep = Annotated[EventBus, Depends(get_event_bus)]
+ConnectionRegistryDep = Annotated[ConnectionRegistry, Depends(get_connection_registry)]

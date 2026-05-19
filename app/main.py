@@ -13,14 +13,26 @@ from app.core.exceptions import (
 	unhandled_exception_handler,
 	validation_exception_handler,
 )
+from app.services.events import EventBus
+from app.services.websocket import ConnectionRegistry
 
 settings = get_settings()
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> None:  # noqa: ARG001
+async def lifespan(app: FastAPI):
 	configure_celery()
+
+	event_bus = EventBus(settings.CELERY_BROKER_URL)
+	await event_bus.connect()
+	app.state.event_bus = event_bus
+
+	connection_registry = ConnectionRegistry()
+	app.state.connection_registry = connection_registry
+
 	yield
+
+	await event_bus.disconnect()
 
 
 app = FastAPI(title=settings.PROJECT_NAME, lifespan=lifespan)

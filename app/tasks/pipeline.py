@@ -29,6 +29,21 @@ logger = logging.getLogger(__name__)
 
 PIPELINE_QUEUE = "pipeline"
 
+# Valid forward transitions — FAILED is reachable from any state.
+_VALID_OCR_TRANSITIONS: dict[str, set[str]] = {
+	"pending": {"processing", "failed"},
+	"processing": {"complete", "failed"},
+	"complete": {"failed"},
+	"failed": {"failed"},
+}
+
+_VALID_CASE_TRANSITIONS: dict[str, set[str]] = {
+	"pending": {"processing", "complete", "failed"},
+	"processing": {"complete", "failed"},
+	"complete": {"failed"},
+	"failed": {"failed"},
+}
+
 # One persistent event loop per worker process.
 #  Celery tasks are synchronous, but our pipeline stages are async, so we need to bridge the gap.
 _worker_loop: asyncio.AbstractEventLoop | None = None
@@ -135,6 +150,12 @@ async def _set_ocr_status(session, lab_result_id: UUID, status: str, *, extracte
 	lab_result = await session.get(LabResult, lab_result_id)
 	if lab_result is None:
 		return
+
+	current = lab_result.ocr_status.value
+	if status not in _VALID_OCR_TRANSITIONS.get(current, set()):
+		logger.warning("Invalid status transition: %s → %s for lab_result %s", current, status, lab_result_id)
+		return
+
 	lab_result.ocr_status = OCRStatus(status)
 	if extracted_values is not None:
 		lab_result.extracted_values = extracted_values
@@ -148,6 +169,12 @@ async def _set_case_status(session, case_id: UUID, status: str) -> None:  # type
 	case = await session.get(MedicalCase, case_id)
 	if case is None:
 		return
+
+	current = case.status.value
+	if status not in _VALID_CASE_TRANSITIONS.get(current, set()):
+		logger.warning("Invalid status transition: %s → %s for case %s", current, status, case_id)
+		return
+
 	case.status = MedicalCaseStatus(status)
 	await session.commit()
 

@@ -1,12 +1,20 @@
+import os
 from functools import lru_cache
 
-from pydantic import Field, PostgresDsn, field_validator
+from pydantic import Field, PostgresDsn
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+APP_ENV = os.getenv("APP_ENV", "staging")
+
+ENV_FILES = {
+	"staging": ".env.staging",
+	"production": ".env.production",
+}
 
 
 class Settings(BaseSettings):
 	model_config = SettingsConfigDict(
-		env_file=".env",
+		env_file=ENV_FILES.get(APP_ENV, ".env.staging"),
 		env_file_encoding="utf-8",
 		case_sensitive=True,
 		extra="ignore",
@@ -37,9 +45,9 @@ class Settings(BaseSettings):
 	OTP_MAX_ATTEMPTS: int = 5
 	OTP_PEPPER: str = Field(min_length=32)
 
-	RESEND_API_KEY: str | None = None
-	RESEND_FROM_EMAIL: str = ""
-	RESEND_FROM_NAME: str = "Clinsights"
+	BREVO_API_KEY: str | None = Field(default=None)
+	BREVO_FROM_EMAIL: str = Field(default="")
+	BREVO_FROM_NAME: str = "Clinsights"
 
 	# SMTP (fallback email provider)
 	SMTP_HOST: str = ""
@@ -85,15 +93,6 @@ class Settings(BaseSettings):
 	PIPELINE_TIMEOUT_SECONDS: int = 30
 
 	FRONTEND_URL: str = ""
-
-	@field_validator("RESEND_FROM_EMAIL", mode="after")
-	@classmethod
-	def resend_from_email_required_when_resend_enabled(cls, v: str, info: object) -> str:
-		"""Require a non-empty RESEND_FROM_EMAIL when Resend is configured."""
-		data = getattr(info, "data", {})
-		if data.get("RESEND_API_KEY") and not v:
-			raise ValueError("RESEND_FROM_EMAIL must be set when RESEND_API_KEY is configured")
-		return v
 
 	# Password reset
 	FRONTEND_RESET_PASSWORD_URL: str = f"{FRONTEND_URL}/reset-password"
