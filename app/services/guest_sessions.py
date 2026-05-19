@@ -93,18 +93,38 @@ class GuestSessionManager:
 		return session
 
 	async def increment_chat(self, guest_session_id: UUID) -> None:
-		session = await self._repo.get_by_id(guest_session_id)
-		if session is None:
-			raise UnauthorizedError("Guest session expired or invalid.")
-		session.chat_count += 1
-		await self._touch(session, now=self._now())
+		settings = get_settings()
+		now = self._now()
+		ok = await self._repo.try_increment_counter(
+			guest_session_id,
+			column="chat_count",
+			limit=settings.GUEST_CHAT_MESSAGE_LIMIT,
+			now=now,
+			ttl_seconds=settings.GUEST_SESSION_TTL_SECONDS,
+		)
+		if not ok:
+			session = await self._repo.get_by_id(guest_session_id)
+			if session is None or not self.is_active(session, now=now):
+				raise UnauthorizedError("Guest session expired or invalid.")
+			raise GuestLimitExceeded("Guest message limit reached. Please sign up to continue chatting.")
+		await self._repo.commit()
 
 	async def increment_upload(self, guest_session_id: UUID) -> None:
-		session = await self._repo.get_by_id(guest_session_id)
-		if session is None:
-			raise UnauthorizedError("Guest session expired or invalid.")
-		session.upload_count += 1
-		await self._touch(session, now=self._now())
+		settings = get_settings()
+		now = self._now()
+		ok = await self._repo.try_increment_counter(
+			guest_session_id,
+			column="upload_count",
+			limit=settings.GUEST_UPLOAD_LIMIT,
+			now=now,
+			ttl_seconds=settings.GUEST_SESSION_TTL_SECONDS,
+		)
+		if not ok:
+			session = await self._repo.get_by_id(guest_session_id)
+			if session is None or not self.is_active(session, now=now):
+				raise UnauthorizedError("Guest session expired or invalid.")
+			raise GuestLimitExceeded("Upload limit reached. Please sign up to upload more results.")
+		await self._repo.commit()
 
 	async def touch(self, guest_session_id: UUID) -> GuestSession | None:
 		"""Extend TTL and update last_active_at for an active session."""
@@ -132,8 +152,15 @@ class GuestSessionManager:
 		if case_repo._session is not self._repo._session:
 			raise RuntimeError("migrate() requires repositories on the same database session.")
 
-		guest_row = await self._repo.get_by_id(guest_session_id)
-		if guest_row is None or guest_row.revoked or guest_row.migrated_user_id is not None:
+		guest_row = await self._repo.get_by_id_for_update(guest_session_id)
+		if guest_row is None:
+			return GuestMigrationResult(cases_migrated=0, chats_updated=0)
+
+		if guest_row.migrated_user_id is not None:
+			# Idempotent: already migrated (same or different user — do not re-attach cases).
+			return GuestMigrationResult(cases_migrated=0, chats_updated=0)
+
+		if guest_row.revoked:
 			return GuestMigrationResult(cases_migrated=0, chats_updated=0)
 
 		cases = await case_repo.get_by_guest_session(guest_session_id, offset=0, limit=500)

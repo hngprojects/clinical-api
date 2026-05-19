@@ -179,6 +179,4 @@ async def migrate_guest_session_to_user(
 		return GuestMigrationResult(cases_migrated=0, chats_updated=0)
 
 	manager = GuestSessionManager(GuestSessionRepository(case_repo._session))
-	result = await manager.migrate(session_uuid, user_id, case_repo, chat_repo)
-	await revoke_guest_session(str(session_uuid))
-	return result
+	return await manager.migrate(session_uuid, user_id, case_repo, chat_repo)
