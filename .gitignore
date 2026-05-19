@@ -128,7 +128,6 @@ celerybeat.pid
 
 # Environments
 .env*
-!.env.example
 .venv
 .blog_env/
 
@@ -186,3 +185,5 @@ docker/
 docs/
 scripts/smoke-session-management.sh
 curl_test.sh
+docker/.env
+.env.example
