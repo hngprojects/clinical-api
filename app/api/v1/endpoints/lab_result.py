@@ -37,9 +37,7 @@ async def upload(
 	"""Upload a lab result file.
 
 	Creates a MedicalCase and a LabResult in one action, then triggers
-	the OCR → AI pipeline. This is the primary upload path — the frontend
-	sends one request and polls GET /cases/{case_id}/interpretations/latest
-	for the result.
+	the OCR → AI pipeline. The upload is authenticated by user or guest session.
 	"""
 	case, lab_result = await upload_lab_result(
 		lab_repo,
@@ -50,6 +48,7 @@ async def upload(
 		guest_session=ctx.guest_session,
 		manager=manager,
 	)
+
 	return SuccessResponse(
 		message="Upload received. Processing started.",
 		data=UploadResponse(
