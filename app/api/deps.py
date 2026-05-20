@@ -7,7 +7,7 @@ from fastapi import Depends, Header, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ForbiddenError, UnauthorizedError
+from app.core.exceptions import UnauthorizedError
 from app.core.guest_session import (
 	DEVICE_FINGERPRINT_HEADER,
 	get_client_ip,
@@ -35,7 +35,7 @@ from app.repositories.waitlist import WaitlistRepository
 from app.services.auth.tokens import decode_access_token
 from app.services.auth_sessions import AuthSessionManager
 from app.services.events import EventBus
-from app.services.guest import normalize_guest_session_id, to_guest_session_uuid
+from app.services.guest import to_guest_session_uuid
 from app.services.guest_sessions import GuestSessionManager
 from app.services.websocket import ConnectionRegistry
 
@@ -226,36 +226,23 @@ def get_ip_hash(request: Request) -> str:
 	return hash_client_ip(get_client_ip(request))
 
 
-@dataclass(frozen=True)
+@dataclass
 class SessionContext:
-	"""Resolved identity for a request: authenticated user and/or guest session."""
-
 	user: User | None
 	guest_session_id: str | None
 
 
-async def get_session_context(
-	optional_user: Annotated[User | None, Depends(get_optional_user)],
-	guest_session_id: Annotated[str | None, Depends(get_guest_session_id)],
-	manager: GuestSessionManagerDep,
+OptionalUser = Annotated[User | None, Depends(get_optional_user)]
+GuestSessionId = Annotated[str | None, Depends(get_guest_session_id)]
+DeviceFingerprint = Annotated[str | None, Depends(get_device_fingerprint)]
+ClientIpHash = Annotated[str, Depends(get_ip_hash)]
+
+
+def get_session_context(
+	user: OptionalUser,
+	guest_session_id: GuestSessionId,
 ) -> SessionContext:
-	"""Resolve user OR guest session; reject using both at once."""
-	if optional_user is not None:
-		if guest_session_id:
-			raise ForbiddenError("You cannot use a guest session while authenticated.")
-		return SessionContext(user=optional_user, guest_session_id=None)
-
-	if not guest_session_id:
-		return SessionContext(user=None, guest_session_id=None)
-
-	normalized = normalize_guest_session_id(guest_session_id)
-	if normalized is None:
-		raise UnauthorizedError("Invalid guest session id.")
-
-	session = await manager.get(to_guest_session_uuid(normalized))
-	if session is None:
-		raise UnauthorizedError("Guest session expired or invalid.")
-	return SessionContext(user=None, guest_session_id=normalized)
+	return SessionContext(user=user, guest_session_id=guest_session_id)
 
 
 async def get_current_guest_session(
@@ -275,14 +262,6 @@ async def get_current_guest_session(
 	return session
 
 
-OptionalUser = Annotated[User | None, Depends(get_optional_user)]
-GuestSessionId = Annotated[str | None, Depends(get_guest_session_id)]
-DeviceFingerprint = Annotated[str | None, Depends(get_device_fingerprint)]
-ClientIpHash = Annotated[str, Depends(get_ip_hash)]
-SessionContextDep = Annotated[SessionContext, Depends(get_session_context)]
-CurrentGuestSessionDep = Annotated[GuestSession, Depends(get_current_guest_session)]
-
-
 def get_event_bus(request: Request) -> EventBus:
 	return request.app.state.event_bus
 
@@ -291,5 +270,7 @@ def get_connection_registry(request: Request) -> ConnectionRegistry:
 	return request.app.state.connection_registry
 
 
+SessionContextDep = Annotated[SessionContext, Depends(get_session_context)]
+CurrentGuestSessionDep = Annotated[GuestSession, Depends(get_current_guest_session)]
 EventBusDep = Annotated[EventBus, Depends(get_event_bus)]
 ConnectionRegistryDep = Annotated[ConnectionRegistry, Depends(get_connection_registry)]
