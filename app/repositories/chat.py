@@ -68,24 +68,10 @@ class ChatRepository(BaseRepository[Chat]):
 		*,
 		limit: int = 50,
 	) -> list[Chat]:
-		"""
-		Fetch the most recent `limit` messages in chronological order.
-
-		Used on WebSocket reconnect to send history to the client.
-		We want the LAST 50 messages, but displayed oldest-first.
-
-		Approach: subquery gets the IDs of the newest `limit` rows,
-		outer query fetches the full ORM objects ordered ascending.
-		Avoids aliased() which has unreliable behaviour with async ORM.
-		"""
-		id_subq = (
-			select(Chat.id)
-			.where(Chat.medical_case_id == medical_case_id)
-			.order_by(Chat.sent_at.desc())
-			.limit(limit)
-			.subquery()
-		)
+		"""Fetch the most recent `limit` messages in chronological order."""
 		result = await self._session.execute(
-			select(Chat).where(Chat.id.in_(select(id_subq))).order_by(Chat.sent_at.asc())
+			select(Chat).where(Chat.medical_case_id == medical_case_id).order_by(Chat.sent_at.desc()).limit(limit)
 		)
-		return list(result.scalars().all())
+		chats = list(result.scalars().all())
+		chats.reverse()
+		return chats

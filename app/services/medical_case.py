@@ -75,8 +75,6 @@ async def get_case(
 
 	if user is not None:
 		if case.user_id != user.id:
-			# Hide existence of the case from other users by returning
-			# a NotFound error rather than Forbidden.
 			raise NotFoundError("Medical case not found.")
 		return case
 

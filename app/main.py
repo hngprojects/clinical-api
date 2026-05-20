@@ -43,6 +43,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title=settings.PROJECT_NAME, lifespan=lifespan)
+app.state.connection_registry = ConnectionRegistry()
 
 media_dir = Path(settings.MEDIA_DIR)
 media_dir.mkdir(parents=True, exist_ok=True)

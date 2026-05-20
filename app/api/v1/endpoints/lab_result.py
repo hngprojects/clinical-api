@@ -12,7 +12,6 @@ from app.api.deps import (
 from app.core.exceptions import ForbiddenError, UnauthorizedError
 from app.core.responses import SuccessResponse
 from app.schemas.lab_result import LabResultCreate, LabResultResponse, UploadRequest, UploadResponse
-from app.services.guest import normalize_guest_session_id, to_guest_session_uuid
 from app.services.lab_result import (
 	create_lab_result,
 	get_lab_result,
@@ -35,8 +34,9 @@ async def upload(
 	manager: GuestSessionManagerDep,
 	lab_repo: LabResultRepo,
 	case_repo: MedicalCaseRepo,
+	manager: GuestSessionManagerDep,
 ) -> SuccessResponse[UploadResponse]:
-	"""Upload a lab result reference.
+	"""Upload a lab result (JSON body with file URL).
 
 	Creates a MedicalCase and a LabResult in one action, then triggers
 	the OCR -> AI pipeline. The upload is authenticated by user or guest session.
@@ -44,17 +44,19 @@ async def upload(
 	if ctx.user is not None and payload.guest_session_id:
 		raise ForbiddenError("You cannot use a guest session while authenticated.")
 
-	guest_session = ctx.guest_session
-	if guest_session is None and payload.guest_session_id:
+	if ctx.user is None and not payload.guest_session_id:
+		raise UnauthorizedError("Missing authentication or guest session.")
+
+	guest_session = None
+	if ctx.user is None and payload.guest_session_id:
+		from app.services.guest import normalize_guest_session_id, to_guest_session_uuid
+
 		normalized = normalize_guest_session_id(payload.guest_session_id)
 		if normalized is None:
 			raise UnauthorizedError("Invalid guest session id.")
 		guest_session = await manager.get(to_guest_session_uuid(normalized))
 		if guest_session is None:
 			raise UnauthorizedError("Guest session expired or invalid.")
-
-	if ctx.user is None and guest_session is None:
-		raise UnauthorizedError("Missing authentication or guest session.")
 
 	case, lab_result = await upload_lab_result(
 		lab_repo,
