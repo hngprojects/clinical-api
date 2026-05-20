@@ -34,7 +34,6 @@ async def upload(
 	manager: GuestSessionManagerDep,
 	lab_repo: LabResultRepo,
 	case_repo: MedicalCaseRepo,
-	manager: GuestSessionManagerDep,
 ) -> SuccessResponse[UploadResponse]:
 	"""Upload a lab result (JSON body with file URL).
 
