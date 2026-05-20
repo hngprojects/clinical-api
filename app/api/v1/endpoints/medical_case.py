@@ -90,7 +90,7 @@ async def retrieve_full(
 		chat_repo,
 		case_id,
 		user=ctx.user,
-		guest_session=ctx.guest_session,
+		guest_session_id=ctx.guest_session_id,
 		manager=manager,
 	)
 	return SuccessResponse(
@@ -121,7 +121,7 @@ async def retrieve(
 		case_repo,
 		case_id,
 		user=ctx.user,
-		guest_session=ctx.guest_session,
+		guest_session_id=ctx.guest_session_id,
 		manager=manager,
 	)
 	return SuccessResponse(

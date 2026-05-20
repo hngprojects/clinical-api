@@ -260,11 +260,19 @@ async def get_session_context(
 
 async def get_current_guest_session(
 	ctx: Annotated[SessionContext, Depends(get_session_context)],
+	manager: GuestSessionManagerDep,
 ) -> GuestSession:
 	"""Require a valid guest session (no authenticated user)."""
-	if ctx.guest_session is None:
+	if ctx.guest_session_id is None:
 		raise UnauthorizedError("Missing or invalid guest session.")
-	return ctx.guest_session
+	try:
+		session_uuid = to_guest_session_uuid(ctx.guest_session_id)
+	except ValueError as exc:
+		raise UnauthorizedError("Invalid guest session id.") from exc
+	session = await manager.get(session_uuid)
+	if session is None:
+		raise UnauthorizedError("Guest session expired or invalid.")
+	return session
 
 
 OptionalUser = Annotated[User | None, Depends(get_optional_user)]
