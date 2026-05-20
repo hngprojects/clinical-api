@@ -84,7 +84,8 @@ async def get_case(
 		valid_guest_id = await resolve_guest_session_id(guest_session_id, manager=manager)
 
 	if case.guest_session_id != valid_guest_id:
-		raise ForbiddenError("You do not have access to this case.")
+		# Guest users must receive a permission error when they target someone else's case.
+		raise ForbiddenError("You do not have access to this medical case.")
 	await touch_guest_session(valid_guest_id, manager=manager)
 	return case
 
