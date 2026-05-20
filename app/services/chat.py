@@ -35,7 +35,7 @@ async def send_message(
 		await manager.can_use(guest_session.id, GuestUsageAction.CHAT)
 
 	message = Chat(
-		user_id=payload.user_id or (user.id if user else None),
+		user_id=user.id if user else None,
 		medical_case_id=payload.medical_case_id,
 		sender_type=payload.sender_type,
 		content=payload.content,

@@ -20,7 +20,11 @@ try:
 except ValueError:
 	_pool_kwargs = {}
 
-engine = create_async_engine(str(get_settings().DATABASE_URL), echo=False, **_pool_kwargs)
+engine = create_async_engine(
+	str(get_settings().DATABASE_URL),
+	echo=False,
+	**_pool_kwargs,
+)
 
 AsyncSessionLocal = async_sessionmaker(
 	engine,
