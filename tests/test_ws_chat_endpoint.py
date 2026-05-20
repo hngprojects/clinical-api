@@ -11,15 +11,6 @@ from app.db.session import AsyncSessionLocal
 from app.services.auth.tokens import create_access_token
 
 
-@pytest.fixture(scope="session", autouse=True)
-async def setup_database():
-    from app.db.session import engine
-    from app.models.base import Base
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    yield
-
-
 def make_token(user_id: uuid.UUID) -> str:
     token, _ = create_access_token(user_id)
     return token
@@ -110,7 +101,7 @@ class TestWebSocketAuth:
 
 
 class TestWebSocketCaseOwnership:
-    async def test_valid_token_nonexistent_case_closes_connection(
+    def test_valid_token_nonexistent_case_closes_connection(
         self, db_user: User
     ):
         token = make_token(db_user.id)
@@ -129,7 +120,7 @@ class TestWebSocketCaseOwnership:
             closed = True
         assert closed
 
-    async def test_valid_token_valid_case_stays_open(
+    def test_valid_token_valid_case_stays_open(
         self, db_user: User, db_case: MedicalCase
     ):
         token = make_token(db_user.id)
@@ -159,7 +150,7 @@ class TestWebSocketCaseOwnership:
 
 
 class TestWebSocketMessaging:
-    async def test_ping_returns_pong(self, db_user: User, db_case: MedicalCase):
+    def test_ping_returns_pong(self, db_user: User, db_case: MedicalCase):
         token = make_token(db_user.id)
         client = TestClient(app, raise_server_exceptions=False)
         pong_received = False
@@ -186,7 +177,7 @@ class TestWebSocketMessaging:
 
         assert pong_received
 
-    async def test_unknown_type_gets_error_response(
+    def test_unknown_type_gets_error_response(
         self, db_user: User, db_case: MedicalCase
     ):
         token = make_token(db_user.id)
@@ -214,7 +205,7 @@ class TestWebSocketMessaging:
 
         assert error_received
 
-    async def test_empty_content_gets_validation_error(
+    def test_empty_content_gets_validation_error(
         self, db_user: User, db_case: MedicalCase
     ):
         token = make_token(db_user.id)
