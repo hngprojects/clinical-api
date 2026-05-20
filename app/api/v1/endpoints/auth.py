@@ -35,7 +35,6 @@ from app.services.auth import (
 	authenticate_credentials,
 	authenticate_otp,
 	create_otp_for_user,
-	verify_otp_for_user,
 	decode_access_token,
 	decode_refresh_token,
 	otp_ttl_seconds,
@@ -43,6 +42,7 @@ from app.services.auth import (
 	revoke_refresh_token,
 	rotate_all_tokens,
 	signup_user,
+	verify_otp_for_user,
 )
 from app.services.auth.blocklist import is_token_revoked, revoke_token
 from app.services.oauth import (
