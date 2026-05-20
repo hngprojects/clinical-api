@@ -60,41 +60,41 @@ async def db_case(db_user: User) -> MedicalCase:
 
 class TestWebSocketAuth:
     def test_invalid_token_closes_connection(self):
-        client = TestClient(app)
         closed = False
         try:
-            with client.websocket_connect("/api/v1/ws/chat") as ws:
-                ws.send_json({
-                    "type": "init",
-                    "case_id": str(uuid.uuid4()),
-                    "token": "this.is.not.a.valid.jwt",
-                })
-                while True:
-                    ws.receive_json()
+            with TestClient(app) as client:
+                with client.websocket_connect("/api/v1/ws/chat") as ws:
+                    ws.send_json({
+                        "type": "init",
+                        "case_id": str(uuid.uuid4()),
+                        "token": "this.is.not.a.valid.jwt",
+                    })
+                    while True:
+                        ws.receive_json()
         except WebSocketDisconnect:
             closed = True
         assert closed
 
     def test_malformed_init_closes_connection(self):
-        client = TestClient(app)
         closed = False
         try:
-            with client.websocket_connect("/api/v1/ws/chat") as ws:
-                ws.send_json({"type": "message", "content": "hello"})
-                while True:
-                    ws.receive_json()
+            with TestClient(app) as client:
+                with client.websocket_connect("/api/v1/ws/chat") as ws:
+                    ws.send_json({"type": "message", "content": "hello"})
+                    while True:
+                        ws.receive_json()
         except WebSocketDisconnect:
             closed = True
         assert closed
 
     def test_missing_case_id_field_closes_connection(self):
-        client = TestClient(app)
         closed = False
         try:
-            with client.websocket_connect("/api/v1/ws/chat") as ws:
-                ws.send_json({"type": "init", "token": "sometoken"})
-                while True:
-                    ws.receive_json()
+            with TestClient(app) as client:
+                with client.websocket_connect("/api/v1/ws/chat") as ws:
+                    ws.send_json({"type": "init", "token": "sometoken"})
+                    while True:
+                        ws.receive_json()
         except WebSocketDisconnect:
             closed = True
         assert closed
@@ -105,17 +105,17 @@ class TestWebSocketCaseOwnership:
         self, db_user: User
     ):
         token = make_token(db_user.id)
-        client = TestClient(app)
         closed = False
         try:
-            with client.websocket_connect("/api/v1/ws/chat") as ws:
-                ws.send_json({
-                    "type": "init",
-                    "case_id": str(uuid.uuid4()),
-                    "token": token,
-                })
-                while True:
-                    ws.receive_json()
+            with TestClient(app) as client:
+                with client.websocket_connect("/api/v1/ws/chat") as ws:
+                    ws.send_json({
+                        "type": "init",
+                        "case_id": str(uuid.uuid4()),
+                        "token": token,
+                    })
+                    while True:
+                        ws.receive_json()
         except WebSocketDisconnect:
             closed = True
         assert closed
@@ -124,22 +124,22 @@ class TestWebSocketCaseOwnership:
         self, db_user: User, db_case: MedicalCase
     ):
         token = make_token(db_user.id)
-        client = TestClient(app, raise_server_exceptions=False)
         history_received = False
         disconnect_code = None
 
         try:
-            with client.websocket_connect("/api/v1/ws/chat") as ws:
-                ws.send_json({
-                    "type": "init",
-                    "case_id": str(db_case.id),
-                    "token": token,
-                })
-                msg = ws.receive_json()
-                print(f"\nReceived message: {msg}")
-                if msg.get("type") == "history":
-                    history_received = True
-                    assert isinstance(msg["messages"], list)
+            with TestClient(app, raise_server_exceptions=False) as client:
+                with client.websocket_connect("/api/v1/ws/chat") as ws:
+                    ws.send_json({
+                        "type": "init",
+                        "case_id": str(db_case.id),
+                        "token": token,
+                    })
+                    msg = ws.receive_json()
+                    print(f"\nReceived message: {msg}")
+                    if msg.get("type") == "history":
+                        history_received = True
+                        assert isinstance(msg["messages"], list)
         except WebSocketDisconnect as e:
             disconnect_code = e.code
             print(f"\nDisconnected with code={e.code} reason={e.reason}")
@@ -152,24 +152,24 @@ class TestWebSocketCaseOwnership:
 class TestWebSocketMessaging:
     def test_ping_returns_pong(self, db_user: User, db_case: MedicalCase):
         token = make_token(db_user.id)
-        client = TestClient(app, raise_server_exceptions=False)
         pong_received = False
 
         try:
-            with client.websocket_connect("/api/v1/ws/chat") as ws:
-                ws.send_json({
-                    "type": "init",
-                    "case_id": str(db_case.id),
-                    "token": token,
-                })
-                msg = ws.receive_json()
-                print(f"\nInit response: {msg}")
-                if msg.get("type") == "history":
-                    ws.send_json({"type": "ping"})
-                    msg2 = ws.receive_json()
-                    print(f"\nPing response: {msg2}")
-                    if msg2.get("type") == "pong":
-                        pong_received = True
+            with TestClient(app, raise_server_exceptions=False) as client:
+                with client.websocket_connect("/api/v1/ws/chat") as ws:
+                    ws.send_json({
+                        "type": "init",
+                        "case_id": str(db_case.id),
+                        "token": token,
+                    })
+                    msg = ws.receive_json()
+                    print(f"\nInit response: {msg}")
+                    if msg.get("type") == "history":
+                        ws.send_json({"type": "ping"})
+                        msg2 = ws.receive_json()
+                        print(f"\nPing response: {msg2}")
+                        if msg2.get("type") == "pong":
+                            pong_received = True
         except WebSocketDisconnect as e:
             print(f"\nDisconnected: code={e.code}")
         except Exception as e:
@@ -181,23 +181,23 @@ class TestWebSocketMessaging:
         self, db_user: User, db_case: MedicalCase
     ):
         token = make_token(db_user.id)
-        client = TestClient(app, raise_server_exceptions=False)
         error_received = False
 
         try:
-            with client.websocket_connect("/api/v1/ws/chat") as ws:
-                ws.send_json({
-                    "type": "init",
-                    "case_id": str(db_case.id),
-                    "token": token,
-                })
-                msg = ws.receive_json()
-                if msg.get("type") == "history":
-                    ws.send_json({"type": "banana"})
-                    msg2 = ws.receive_json()
-                    print(f"\nUnknown type response: {msg2}")
-                    if msg2.get("type") == "error" and msg2.get("code") == "UNKNOWN_TYPE":
-                        error_received = True
+            with TestClient(app, raise_server_exceptions=False) as client:
+                with client.websocket_connect("/api/v1/ws/chat") as ws:
+                    ws.send_json({
+                        "type": "init",
+                        "case_id": str(db_case.id),
+                        "token": token,
+                    })
+                    msg = ws.receive_json()
+                    if msg.get("type") == "history":
+                        ws.send_json({"type": "banana"})
+                        msg2 = ws.receive_json()
+                        print(f"\nUnknown type response: {msg2}")
+                        if msg2.get("type") == "error" and msg2.get("code") == "UNKNOWN_TYPE":
+                            error_received = True
         except WebSocketDisconnect as e:
             print(f"\nDisconnected: code={e.code}")
         except Exception as e:
@@ -209,23 +209,23 @@ class TestWebSocketMessaging:
         self, db_user: User, db_case: MedicalCase
     ):
         token = make_token(db_user.id)
-        client = TestClient(app, raise_server_exceptions=False)
         error_received = False
 
         try:
-            with client.websocket_connect("/api/v1/ws/chat") as ws:
-                ws.send_json({
-                    "type": "init",
-                    "case_id": str(db_case.id),
-                    "token": token,
-                })
-                msg = ws.receive_json()
-                if msg.get("type") == "history":
-                    ws.send_json({"type": "message", "content": "   "})
-                    msg2 = ws.receive_json()
-                    print(f"\nValidation response: {msg2}")
-                    if msg2.get("type") == "error" and msg2.get("code") == "VALIDATION_ERROR":
-                        error_received = True
+            with TestClient(app, raise_server_exceptions=False) as client:
+                with client.websocket_connect("/api/v1/ws/chat") as ws:
+                    ws.send_json({
+                        "type": "init",
+                        "case_id": str(db_case.id),
+                        "token": token,
+                    })
+                    msg = ws.receive_json()
+                    if msg.get("type") == "history":
+                        ws.send_json({"type": "message", "content": "   "})
+                        msg2 = ws.receive_json()
+                        print(f"\nValidation response: {msg2}")
+                        if msg2.get("type") == "error" and msg2.get("code") == "VALIDATION_ERROR":
+                            error_received = True
         except WebSocketDisconnect as e:
             print(f"\nDisconnected: code={e.code}")
         except Exception as e:
