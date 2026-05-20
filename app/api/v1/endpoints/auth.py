@@ -341,6 +341,7 @@ async def google_login(
 	guest_session_id: str | None = Query(None, description="Guest session to migrate after OAuth"),
 	device_id: str | None = Query(None, description="Client device identifier for per-device auth session"),
 	platform: str | None = Query("web", description="Client platform (web, ios, android)"),
+	return_url: str | None = Query(None, description="Mobile deep link to redirect after auth"),
 ) -> RedirectResponse:
 	"""Redirect to Google's OAuth consent screen."""
 	settings = get_settings()
@@ -348,6 +349,7 @@ async def google_login(
 		guest_session_id=guest_session_id,
 		device_id=device_id,
 		platform=platform,
+		return_url=return_url,
 	)
 	query_params = urlencode(
 		{
@@ -379,10 +381,10 @@ async def google_callback(
 	google_access_token = token_data.get("access_token")
 	if not google_access_token:
 		raise UnauthorizedError("Google access token not found")
-
+ 
 	google_user = await fetch_google_user_info(google_access_token)
 	user = await get_or_create_google_user(user_repo, google_user)
-
+ 
 	oauth_ctx = decode_oauth_state(state)
 	guest_id = oauth_ctx.guest_session_id if oauth_ctx else None
 	if guest_id:
@@ -392,7 +394,7 @@ async def google_callback(
 			guest_session_id=guest_id,
 			user_id=user.id,
 		)
-
+ 
 	if oauth_ctx and oauth_ctx.device_id:
 		oauth_device_id = oauth_ctx.device_id
 	elif oauth_ctx and oauth_ctx.guest_session_id:
@@ -400,9 +402,9 @@ async def google_callback(
 	else:
 		ua = request.headers.get("user-agent", "unknown")
 		oauth_device_id = f"google-{hash_opaque_token(ua)[:16]}"
-
+ 
 	oauth_platform = oauth_ctx.platform if oauth_ctx and oauth_ctx.platform else "web"
-
+ 
 	issue = await auth_manager.create(
 		user.id,
 		oauth_device_id,
@@ -412,10 +414,16 @@ async def google_callback(
 	)
 	_set_refresh_cookie(response, issue.refresh_token)
 	app_access_token = issue.access_token
-
+ 
 	settings = get_settings()
-	redirect_url = f"{settings.FRONTEND_AUTH_CALLBACK_URL}?{urlencode({'access_token': app_access_token})}"
+	base_redirect = (
+		oauth_ctx.return_url
+		if oauth_ctx and oauth_ctx.return_url
+		else settings.FRONTEND_AUTH_CALLBACK_URL
+	)
+	redirect_url = f"{base_redirect}?{urlencode({'access_token': app_access_token})}"
 	return RedirectResponse(url=redirect_url)
+
 
 
 # Token refresh
