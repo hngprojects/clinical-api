@@ -63,7 +63,7 @@ class TestWebSocketAuth:
         client = TestClient(app)
         closed = False
         try:
-            with client.websocket_connect("/ws/chat") as ws:
+            with client.websocket_connect("/api/v1/ws/chat") as ws:
                 ws.send_json({
                     "type": "init",
                     "case_id": str(uuid.uuid4()),
@@ -79,7 +79,7 @@ class TestWebSocketAuth:
         client = TestClient(app)
         closed = False
         try:
-            with client.websocket_connect("/ws/chat") as ws:
+            with client.websocket_connect("/api/v1/ws/chat") as ws:
                 ws.send_json({"type": "message", "content": "hello"})
                 while True:
                     ws.receive_json()
@@ -91,7 +91,7 @@ class TestWebSocketAuth:
         client = TestClient(app)
         closed = False
         try:
-            with client.websocket_connect("/ws/chat") as ws:
+            with client.websocket_connect("/api/v1/ws/chat") as ws:
                 ws.send_json({"type": "init", "token": "sometoken"})
                 while True:
                     ws.receive_json()
@@ -108,7 +108,7 @@ class TestWebSocketCaseOwnership:
         client = TestClient(app)
         closed = False
         try:
-            with client.websocket_connect("/ws/chat") as ws:
+            with client.websocket_connect("/api/v1/ws/chat") as ws:
                 ws.send_json({
                     "type": "init",
                     "case_id": str(uuid.uuid4()),
@@ -129,7 +129,7 @@ class TestWebSocketCaseOwnership:
         disconnect_code = None
 
         try:
-            with client.websocket_connect("/ws/chat") as ws:
+            with client.websocket_connect("/api/v1/ws/chat") as ws:
                 ws.send_json({
                     "type": "init",
                     "case_id": str(db_case.id),
@@ -156,7 +156,7 @@ class TestWebSocketMessaging:
         pong_received = False
 
         try:
-            with client.websocket_connect("/ws/chat") as ws:
+            with client.websocket_connect("/api/v1/ws/chat") as ws:
                 ws.send_json({
                     "type": "init",
                     "case_id": str(db_case.id),
@@ -185,7 +185,7 @@ class TestWebSocketMessaging:
         error_received = False
 
         try:
-            with client.websocket_connect("/ws/chat") as ws:
+            with client.websocket_connect("/api/v1/ws/chat") as ws:
                 ws.send_json({
                     "type": "init",
                     "case_id": str(db_case.id),
@@ -213,7 +213,7 @@ class TestWebSocketMessaging:
         error_received = False
 
         try:
-            with client.websocket_connect("/ws/chat") as ws:
+            with client.websocket_connect("/api/v1/ws/chat") as ws:
                 ws.send_json({
                     "type": "init",
                     "case_id": str(db_case.id),
