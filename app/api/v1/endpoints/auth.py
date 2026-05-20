@@ -42,13 +42,13 @@ from app.services.auth import (
 	authenticate_credentials,
 	authenticate_otp,
 	create_otp_for_user,
-	verify_otp_for_user,
 	decode_access_token,
 	decode_refresh_token,
 	otp_ttl_seconds,
 	resend_otp,
 	revoke_refresh_token,
 	signup_user,
+	verify_otp_for_user,
 )
 from app.services.auth.blocklist import is_token_revoked, revoke_token
 from app.services.guest import migrate_guest_session_to_user
