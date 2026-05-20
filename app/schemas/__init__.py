@@ -25,6 +25,7 @@ from app.schemas.medical_case import (
 	MedicalCaseUpdate,
 )
 from app.schemas.notification import NotificationBase, NotificationCreate, NotificationResponse, NotificationUpdate
+from app.schemas.pipeline_audit_log import PipelineAuditLogResponse
 from app.schemas.user import GoogleUserCreate, UserBase, UserCreate, UserResponse, UserUpdate
 from app.schemas.waitlist import WaitlistCreate, WaitlistResponse
 
@@ -70,6 +71,8 @@ __all__ = [
 	"NotificationCreate",
 	"NotificationUpdate",
 	"NotificationResponse",
+	# PipelineAuditLog
+	"PipelineAuditLogResponse",
 	# Waitlist
 	"WaitlistCreate",
 	"WaitlistResponse",

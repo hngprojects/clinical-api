@@ -33,8 +33,8 @@ The MVP focuses on one core problem: people receive laboratory results but canno
 ## 5. High-Level Logic & Behaviour
 - **Upload**: Accepted: JPG, PNG, PDF. Unreadable/unsupported file → error state + reupload. OCR timeout at 15s → error + reupload.
 - **AI Engine**: Classifies each value as Normal / Caution / Abnormal against reference. Disclaimer appended automatically. AI error → fallback message + retry.
-- **Guest Flow**: Upload-to-interpretation without account. The session expires in 1hr. Sign-up prompt on: After 3 messages; chat history migration is automatic on signup.
-- **Auth & Session**: OTP valid 15 mins, single-use. Password reset link expires in 1hr. Google OAuth via OAuth 2.0. Tokens stored securely on device.
+- **Guest flow**: Call `POST /api/v1/guest-session` with `X-Device-Fingerprint` to obtain or reuse a `guest_session_id` (stored in Postgres, default TTL 1 hour). Send `X-Guest-Session-Id` on upload, c
+- **Auth & session**: JWT access token in `Authorization: Bearer`; refresh token in `refresh_token` HttpOnly cookie, backed by `auth_sessions` per device. `CurrentUser` requires verified email. `Sessi
 - **Notifications**: Push sent on interpretation complete. Suppressed if the user is actively on the result screen. Users who opt out can still access results in-app.
 
 ## 6. Acceptance Criteria
@@ -115,7 +115,9 @@ clinsights-be/
 │       ├── ocr.py                         # OCR extraction pipeline (PDF/image → structured data)
 │       ├── ai.py                          # AI interpretation engine — prompting, risk classification
 │       ├── chat.py                        # Chat service — context injection, response generation
-│       ├── guest.py                       # Guest session management + migration to user account
+│       ├── guest.py                       # Guest session helpers (Postgres)
+│       ├── guest_sessions.py              # GuestSessionManager (create, limits, migrate)
+│       ├── auth_sessions.py               # AuthSessionManager (per-device refresh tokens)
 │       └── notification.py               # Push notification dispatch + preference management
 ├── alembic/
 │   ├── env.py                             # Wired to app.models.Base.metadata + settings

@@ -15,13 +15,43 @@ from app.models.user import User, UserRole
 from app.services.auth.tokens import create_access_token
 
 
+class _FakeRedis:
+	"""In-memory Redis stand-in for rate-limit tests."""
+
+	def __init__(self) -> None:
+		self._counts: dict[str, int] = {}
+
+	async def incr(self, key: str) -> int:
+		self._counts[key] = self._counts.get(key, 0) + 1
+		return self._counts[key]
+
+	async def expire(self, key: str, ttl: int) -> bool:  # noqa: ARG002
+		return True
+
+
+@pytest.fixture(autouse=True)
+def mock_redis_rate_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+	"""Avoid requiring a live Redis broker during API tests."""
+	fake = _FakeRedis()
+
+	async def _get_redis() -> _FakeRedis:
+		return fake
+
+	monkeypatch.setattr("app.core.rate_limit.get_redis", _get_redis)
+
 
 @pytest.fixture(scope="session", autouse=True)
-async def setup_database():
+async def setup_database(request: pytest.FixtureRequest):
     """
     Create all tables once at the start of the test session, drop them at the end.
     Runs automatically for every test — no opt-in required.
     """
+    session = request.session
+    needs_db = any(item.get_closest_marker("no_db") is None for item in session.items)
+    if not needs_db:
+        yield
+        return
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield
