@@ -233,6 +233,12 @@ class SessionContext:
 	user: User | None
 	guest_session: GuestSession | None
 
+	@property
+	def guest_session_id(self) -> str | None:
+		if self.guest_session is None:
+			return None
+		return str(self.guest_session.id)
+
 
 async def get_session_context(
 	optional_user: Annotated[User | None, Depends(get_optional_user)],
@@ -285,19 +291,3 @@ def get_connection_registry(request: Request) -> ConnectionRegistry:
 
 EventBusDep = Annotated[EventBus, Depends(get_event_bus)]
 ConnectionRegistryDep = Annotated[ConnectionRegistry, Depends(get_connection_registry)]
-
-
-@dataclass
-class SessionContext:
-	user: User | None
-	guest_session_id: str | None
-
-
-def get_session_context(
-	user: OptionalUser,
-	guest_session_id: GuestSessionId,
-) -> SessionContext:
-	return SessionContext(user=user, guest_session_id=guest_session_id)
-
-
-SessionContextDep = Annotated[SessionContext, Depends(get_session_context)]

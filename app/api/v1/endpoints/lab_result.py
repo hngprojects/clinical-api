@@ -1,23 +1,24 @@
 from uuid import UUID
 
-from fastapi import APIRouter, File, Query, Request, UploadFile, status
+from fastapi import APIRouter, Query, status
 
 from app.api.deps import (
 	CurrentUser,
 	GuestSessionManagerDep,
 	LabResultRepo,
 	MedicalCaseRepo,
-	MedicalUploadRepo,
 	SessionContextDep,
 )
-from app.core.exceptions import BadRequestError, UnauthorizedError
+from app.core.exceptions import UnauthorizedError
+from app.core.exceptions import ForbiddenError
 from app.core.responses import SuccessResponse
-from app.schemas.lab_result import LabResultCreate, LabResultResponse, UploadResponse
+from app.schemas.lab_result import LabResultCreate, LabResultResponse, UploadRequest, UploadResponse
+from app.services.guest import normalize_guest_session_id, to_guest_session_uuid
 from app.services.lab_result import (
 	create_lab_result,
 	get_lab_result,
-	handle_file_upload,
 	list_lab_results_for_case,
+	upload_lab_result,
 )
 from app.services.medical_case import get_case
 
@@ -30,48 +31,39 @@ router = APIRouter(tags=["lab-results"])
 	status_code=status.HTTP_201_CREATED,
 )
 async def upload(
-	request: Request,
+	payload: UploadRequest,
 	ctx: SessionContextDep,
+	manager: GuestSessionManagerDep,
 	lab_repo: LabResultRepo,
 	case_repo: MedicalCaseRepo,
-	upload_repo: MedicalUploadRepo,
-	file: UploadFile = File(...),
 ) -> SuccessResponse[UploadResponse]:
-	"""Upload a lab result file.
+	"""Upload a lab result reference.
 
 	Creates a MedicalCase and a LabResult in one action, then triggers
-	the OCR → AI pipeline. The upload is authenticated by user or guest session.
+	the OCR -> AI pipeline. The upload is authenticated by user or guest session.
 	"""
-	if ctx.user is None and ctx.guest_session_id is None:
+	if ctx.user is not None and payload.guest_session_id:
+		raise ForbiddenError("You cannot use a guest session while authenticated.")
+
+	guest_session = ctx.guest_session
+	if guest_session is None and payload.guest_session_id:
+		normalized = normalize_guest_session_id(payload.guest_session_id)
+		if normalized is None:
+			raise UnauthorizedError("Invalid guest session id.")
+		guest_session = await manager.get(to_guest_session_uuid(normalized))
+		if guest_session is None:
+			raise UnauthorizedError("Guest session expired or invalid.")
+
+	if ctx.user is None and guest_session is None:
 		raise UnauthorizedError("Missing authentication or guest session.")
 
-	valid_media_types = {
-		"image/jpeg",
-		"image/png",
-		"image/webp",
-		"application/pdf",
-	}
-	if file.content_type not in valid_media_types:
-		raise BadRequestError("Unsupported file type. Acceptable types are JPEG, PNG, WebP, or PDF.")
-
-	if file.size is not None and file.size > 10 * 1024 * 1024:
-		raise BadRequestError("File size must be 10MB or smaller.")
-
-	file_contents = await file.read()
-	if len(file_contents) > 10 * 1024 * 1024:
-		raise BadRequestError("File size must be 10MB or smaller.")
-
-	public_url_base = str(request.base_url).rstrip("/")
-	case, lab_result = await handle_file_upload(
+	case, lab_result = await upload_lab_result(
 		lab_repo,
 		case_repo,
-		upload_repo,
-		file_contents,
-		file.filename,
-		file.content_type or "application/octet-stream",
+		payload,
 		ctx.user,
-		ctx.guest_session_id,
-		public_url_base,
+		guest_session=guest_session,
+		manager=manager,
 	)
 
 	return SuccessResponse(
