@@ -253,7 +253,6 @@ async def password_reset(
 	request: ResetPasswordRequest,
 	user_repo: UserRepo,
 	otp_repo: OtpRepo,
-	session: DBSession,
 ) -> SuccessResponse:
 	"""Reset password using an OTP sent to the user's email."""
 	user = await user_repo.get_by_email(request.email.strip().lower())
