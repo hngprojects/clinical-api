@@ -20,9 +20,20 @@ from typing import Any
 
 import httpx
 
+from app.core.config import get_settings
 from app.services.llm import vision_complete
 
 logger = logging.getLogger(__name__)
+
+
+def _fetch_headers() -> dict[str, str]:
+	"""HTTP headers for downloading lab files (Wikimedia blocks generic httpx user-agents)."""
+	name = get_settings().PROJECT_NAME
+	return {
+		"User-Agent": f"{name}/1.0 (lab-result-pipeline)",
+		"Accept": "image/*,application/pdf,*/*;q=0.8",
+	}
+
 
 # Prompt
 
@@ -77,8 +88,8 @@ async def _fetch_file_as_base64(url: str) -> tuple[str, str]:
 
 	Raises OCRExtractionError if the URL does not point to a supported file type.
 	"""
-	async with httpx.AsyncClient(timeout=20) as client:
-		response = await client.get(url)
+	async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+		response = await client.get(url, headers=_fetch_headers())
 		response.raise_for_status()
 
 	media_type = _detect_media_type(

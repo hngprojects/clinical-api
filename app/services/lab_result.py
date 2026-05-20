@@ -2,7 +2,8 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import ForbiddenError, NotFoundError, UnauthorizedError
+from app.models.guest_session import GuestSession
 from app.models.lab_result import LabResult, OCRStatus
 from app.models.medical_case import MedicalCase, MedicalCaseStatus
 from app.models.user import User
@@ -10,6 +11,7 @@ from app.repositories.lab_result import LabResultRepository
 from app.repositories.medical_case import MedicalCaseRepository
 from app.repositories.medical_upload import MedicalUploadRepository
 from app.schemas.lab_result import LabResultCreate, LabResultUpdate, UploadRequest
+from app.services.guest_sessions import GuestSessionManager, GuestUsageAction
 
 
 async def upload_lab_result(
@@ -17,6 +19,9 @@ async def upload_lab_result(
 	case_repo: MedicalCaseRepository,
 	payload: UploadRequest,
 	user: User | None,
+	*,
+	guest_session: GuestSession | None = None,
+	manager: GuestSessionManager | None = None,
 ) -> tuple[MedicalCase, LabResult]:
 	"""Create a MedicalCase + LabResult in one action and fire the pipeline.
 
@@ -25,15 +30,27 @@ async def upload_lab_result(
 	"""
 	from app.tasks.pipeline import run_lab_result_pipeline
 
+	guest_session_uuid: UUID | None = None
+	if user is None:
+		if guest_session is None:
+			raise UnauthorizedError("Authentication or a valid guest session is required.")
+		if manager is None:
+			raise ForbiddenError("Guest uploads require a session manager.")
+		guest_session_uuid = guest_session.id
+		await manager.can_use(guest_session_uuid, GuestUsageAction.UPLOAD)
+
 	# Create the case
 	case = MedicalCase(
 		user_id=user.id if user else None,
-		guest_session_id=payload.guest_session_id if not user else None,
+		guest_session_id=guest_session_uuid,
 		status=MedicalCaseStatus.PENDING,
 	)
 	case_repo.add(case)
 	await case_repo.commit()
 	await case_repo.refresh(case)
+
+	if user is None and manager is not None and guest_session_uuid is not None:
+		await manager.increment_upload(guest_session_uuid)
 
 	# Attach the lab result
 	lab_result = LabResult(

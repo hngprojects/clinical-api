@@ -11,6 +11,7 @@ from app.models.base import Base
 
 if TYPE_CHECKING:
 	from app.models.medical_case import MedicalCase
+	from app.models.pipeline_audit_log import PipelineAuditLog
 
 
 class OCRStatus(str, enum.Enum):
@@ -40,3 +41,6 @@ class LabResult(Base):
 	)
 
 	medical_case: Mapped["MedicalCase"] = relationship(back_populates="lab_results")
+	audit_logs: Mapped[list["PipelineAuditLog"]] = relationship(
+		back_populates="lab_result", order_by="PipelineAuditLog.created_at", cascade="all, delete-orphan"
+	)

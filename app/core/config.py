@@ -65,6 +65,23 @@ class Settings(BaseSettings):
 	CELERY_BROKER_URL: str = "redis://localhost:6379/0"
 	CELERY_RESULT_BACKEND: str | None = None
 
+	# Guest sessions (Postgres guest_sessions table)
+	GUEST_SESSION_TTL_SECONDS: int = 3600  # 1 hour
+	GUEST_CHAT_MESSAGE_LIMIT: int = 3
+	GUEST_UPLOAD_LIMIT: int = 1
+	GUEST_SESSION_RETENTION_DAYS: int = 7
+	GUEST_SESSION_CREATE_RATE_LIMIT: int = 30
+	GUEST_SESSION_CREATE_RATE_WINDOW_SECONDS: int = 3600
+	# When true, use X-Forwarded-For (first hop) for guest IP hashing; only enable behind a trusted proxy.
+	TRUST_PROXY_FORWARDED_IP: bool = False
+
+	# Auth sessions (Postgres auth_sessions table)
+	AUTH_SESSION_INACTIVITY_DAYS: int = 30
+	AUTH_SESSION_ABSOLUTE_DAYS: int = 90
+
+	# OAuth
+	OAUTH_STATE_EXPIRES_MINUTES: int = 10
+
 	AI_PROVIDER: str = "auto"
 
 	OPENAI_API_KEY: str = ""

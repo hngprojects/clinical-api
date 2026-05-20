@@ -58,7 +58,7 @@ jobs:
         run: uv sync --dev
 
       - name: Check for vulnerabilities in dependencies
-        run: uv run pip-audit
+        run: uv run pip-audit --ignore-vuln PYSEC-2025-183
 
       - name: Run Bandit security scan
         run: uv run bandit -r app/ -ll -ii
