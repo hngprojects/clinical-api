@@ -9,8 +9,7 @@ from app.api.deps import (
 	MedicalCaseRepo,
 	SessionContextDep,
 )
-from app.core.exceptions import UnauthorizedError
-from app.core.exceptions import ForbiddenError
+from app.core.exceptions import ForbiddenError, UnauthorizedError
 from app.core.responses import SuccessResponse
 from app.schemas.lab_result import LabResultCreate, LabResultResponse, UploadRequest, UploadResponse
 from app.services.guest import normalize_guest_session_id, to_guest_session_uuid
