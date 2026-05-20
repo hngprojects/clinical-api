@@ -2,13 +2,14 @@ import asyncio
 import uuid
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from app.main import app
 from app.models.medical_case import MedicalCase, MedicalCaseStatus
 from app.models.user import User, UserRole
-from app.db.session import AsyncSessionLocal
+from app.core.config import get_settings
 from app.services.auth.tokens import create_access_token
 
 
@@ -17,8 +18,9 @@ def make_token(user_id: uuid.UUID) -> str:
     return token
 
 
-# ── Helpers that run DB work in their own isolated event loop,
-#    avoiding any cross-loop sharing with TestClient's anyio loop.
+# ── Helpers that run DB work in their own isolated event loop.
+#    Each call creates a fresh engine scoped to that loop, avoiding
+#    the asyncpg "Future attached to a different loop" error.
 
 def _run(coro):
     """Run a coroutine in a brand-new event loop, then close it."""
@@ -29,7 +31,14 @@ def _run(coro):
         loop.close()
 
 
+def _make_session_factory():
+    """Create a fresh async engine + sessionmaker for the current event loop."""
+    engine = create_async_engine(str(get_settings().DATABASE_URL), echo=False)
+    return async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False), engine
+
+
 async def _create_user() -> User:
+    factory, engine = _make_session_factory()
     user = User(
         id=uuid.uuid4(),
         email=f"wstest_{uuid.uuid4().hex[:8]}@clinsights.dev",
@@ -39,44 +48,51 @@ async def _create_user() -> User:
         is_active=True,
         is_email_verified=True,
     )
-    async with AsyncSessionLocal() as session:
+    async with factory() as session:
         session.add(user)
         await session.commit()
         await session.refresh(user)
+    await engine.dispose()
     return user
 
 
 async def _delete_user(user_id: uuid.UUID) -> None:
-    async with AsyncSessionLocal() as session:
+    factory, engine = _make_session_factory()
+    async with factory() as session:
         existing = await session.get(User, user_id)
         if existing:
             await session.delete(existing)
             await session.commit()
+    await engine.dispose()
 
 
 async def _create_case(user_id: uuid.UUID) -> MedicalCase:
+    factory, engine = _make_session_factory()
     case = MedicalCase(
         id=uuid.uuid4(),
         user_id=user_id,
         status=MedicalCaseStatus.COMPLETE,
     )
-    async with AsyncSessionLocal() as session:
+    async with factory() as session:
         session.add(case)
         await session.commit()
         await session.refresh(case)
+    await engine.dispose()
     return case
 
 
 async def _delete_case(case_id: uuid.UUID) -> None:
-    async with AsyncSessionLocal() as session:
+    factory, engine = _make_session_factory()
+    async with factory() as session:
         existing = await session.get(MedicalCase, case_id)
         if existing:
             await session.delete(existing)
             await session.commit()
+    await engine.dispose()
 
 
 # ── Fixtures: synchronous so they never touch pytest-asyncio's event loop
-#    or TestClient's anyio loop. Each DB call gets its own fresh loop.
+#    or TestClient's anyio loop. Each DB call gets its own fresh loop + engine.
 
 @pytest.fixture
 def db_user() -> User:
