@@ -2,7 +2,7 @@ module.exports = {
   apps: [{
     name: "staging",
     script: process.env.HOME + "/.local/bin/uv",
-    args: "run uvicorn app.main:app --host 0.0.0.0 --port 8004",
+    args: "run uvicorn app.main:app --host 0.0.0.0 --port 8000",
     cwd: __dirname,
     interpreter: "none",
     env: {
