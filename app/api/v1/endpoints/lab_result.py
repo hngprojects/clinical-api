@@ -2,7 +2,14 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query, status
 
-from app.api.deps import CurrentUser, GuestSessionId, LabResultRepo, MedicalCaseRepo, OptionalUser
+from app.api.deps import (
+	CurrentUser,
+	GuestSessionManagerDep,
+	LabResultRepo,
+	MedicalCaseRepo,
+	SessionContextDep,
+)
+from app.core.exceptions import ForbiddenError, UnauthorizedError
 from app.core.responses import SuccessResponse
 from app.schemas.lab_result import LabResultCreate, LabResultResponse, UploadRequest, UploadResponse
 from app.services.lab_result import (
@@ -23,17 +30,42 @@ router = APIRouter(tags=["lab-results"])
 )
 async def upload(
 	payload: UploadRequest,
+	ctx: SessionContextDep,
 	lab_repo: LabResultRepo,
 	case_repo: MedicalCaseRepo,
+	manager: GuestSessionManagerDep,
 ) -> SuccessResponse[UploadResponse]:
-	"""Upload a lab result file.
+	"""Upload a lab result (JSON body with file URL).
 
 	Creates a MedicalCase and a LabResult in one action, then triggers
-	the OCR → AI pipeline. This is the primary upload path — the frontend
-	sends one request and polls GET /cases/{case_id}/interpretations/latest
-	for the result.
+	the OCR → AI pipeline. The upload is authenticated by user or guest session.
 	"""
-	case, lab_result = await upload_lab_result(lab_repo, case_repo, payload, None)
+	if ctx.user is not None and payload.guest_session_id:
+		raise ForbiddenError("You cannot use a guest session while authenticated.")
+
+	if ctx.user is None and not payload.guest_session_id:
+		raise UnauthorizedError("Missing authentication or guest session.")
+
+	guest_session = None
+	if ctx.user is None and payload.guest_session_id:
+		from app.services.guest import normalize_guest_session_id, to_guest_session_uuid
+
+		normalized = normalize_guest_session_id(payload.guest_session_id)
+		if normalized is None:
+			raise UnauthorizedError("Invalid guest session id.")
+		guest_session = await manager.get(to_guest_session_uuid(normalized))
+		if guest_session is None:
+			raise UnauthorizedError("Guest session expired or invalid.")
+
+	case, lab_result = await upload_lab_result(
+		lab_repo,
+		case_repo,
+		payload,
+		ctx.user,
+		guest_session=guest_session,
+		manager=manager,
+	)
+
 	return SuccessResponse(
 		message="Upload received. Processing started.",
 		data=UploadResponse(
@@ -71,15 +103,21 @@ async def create(
 )
 async def list_for_case(
 	case_id: UUID,
-	current_user: OptionalUser,
-	guest_session_id: GuestSessionId,
+	ctx: SessionContextDep,
+	manager: GuestSessionManagerDep,
 	lab_repo: LabResultRepo,
 	case_repo: MedicalCaseRepo,
 	offset: int = Query(0, ge=0),
 	limit: int = Query(50, ge=1, le=100),
 ) -> SuccessResponse[list[LabResultResponse]]:
 	"""List lab results for a medical case."""
-	await get_case(case_repo, case_id, user=current_user, guest_session_id=guest_session_id)
+	await get_case(
+		case_repo,
+		case_id,
+		user=ctx.user,
+		guest_session_id=ctx.guest_session_id,
+		manager=manager,
+	)
 	results = await list_lab_results_for_case(lab_repo, case_id, offset=offset, limit=limit)
 	return SuccessResponse(
 		message="OK",
@@ -94,13 +132,19 @@ async def list_for_case(
 async def retrieve(
 	case_id: UUID,
 	result_id: UUID,
-	current_user: OptionalUser,
-	guest_session_id: GuestSessionId,
+	ctx: SessionContextDep,
+	manager: GuestSessionManagerDep,
 	lab_repo: LabResultRepo,
 	case_repo: MedicalCaseRepo,
 ) -> SuccessResponse[LabResultResponse]:
 	"""Retrieve a single lab result."""
-	await get_case(case_repo, case_id, user=current_user, guest_session_id=guest_session_id)
+	await get_case(
+		case_repo,
+		case_id,
+		user=ctx.user,
+		guest_session_id=ctx.guest_session_id,
+		manager=manager,
+	)
 	result = await get_lab_result(lab_repo, result_id)
 	return SuccessResponse(
 		message="OK",

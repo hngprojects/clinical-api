@@ -1,7 +1,9 @@
 from app.repositories.ai_interpretation import AIInterpretationRepository
+from app.repositories.auth_session import AuthSessionRepository
 from app.repositories.base import BaseRepository
 from app.repositories.chat import ChatRepository
 from app.repositories.contact import ContactRepository
+from app.repositories.guest_session import GuestSessionRepository
 from app.repositories.lab_result import LabResultRepository
 from app.repositories.medical_case import MedicalCaseRepository
 from app.repositories.notification import NotificationRepository
@@ -15,7 +17,9 @@ __all__ = [
 	"BaseRepository",
 	"AIInterpretationRepository",
 	"ChatRepository",
+	"AuthSessionRepository",
 	"ContactRepository",
+	"GuestSessionRepository",
 	"LabResultRepository",
 	"MedicalCaseRepository",
 	"NotificationRepository",

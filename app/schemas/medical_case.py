@@ -17,7 +17,7 @@ class MedicalCaseCreate(MedicalCaseBase):
 	"""Schema for creating a medical case."""
 
 	user_id: UUID | None = None
-	guest_session_id: str | None = None
+	guest_session_id: UUID | None = None
 
 	@model_validator(mode="after")
 	def check_user_or_guest(self) -> "MedicalCaseCreate":
@@ -38,7 +38,7 @@ class MedicalCaseResponse(MedicalCaseBase):
 
 	id: UUID
 	user_id: UUID | None = None
-	guest_session_id: str | None = None
+	guest_session_id: UUID | None = None
 	created_at: datetime
 	completed_at: datetime | None = None
 
