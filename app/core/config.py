@@ -72,9 +72,6 @@ class Settings(BaseSettings):
 	GUEST_SESSION_RETENTION_DAYS: int = 7
 	GUEST_SESSION_CREATE_RATE_LIMIT: int = 30
 	GUEST_SESSION_CREATE_RATE_WINDOW_SECONDS: int = 3600
-
-	SIGNUP_RATE_LIMIT: int = 5
-	SIGNUP_RATE_WINDOW_SECONDS: int = 3600
 	# When true, use X-Forwarded-For (first hop) for guest IP hashing; only enable behind a trusted proxy.
 	TRUST_PROXY_FORWARDED_IP: bool = False
 
