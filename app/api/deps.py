@@ -231,7 +231,7 @@ class SessionContext:
 	"""Resolved identity for a request: authenticated user and/or guest session."""
 
 	user: User | None
-	guest_session: GuestSession | None
+	guest_session_id: str | None
 
 
 async def get_session_context(
@@ -243,10 +243,10 @@ async def get_session_context(
 	if optional_user is not None:
 		if guest_session_id:
 			raise ForbiddenError("You cannot use a guest session while authenticated.")
-		return SessionContext(user=optional_user, guest_session=None)
+		return SessionContext(user=optional_user, guest_session_id=None)
 
 	if not guest_session_id:
-		return SessionContext(user=None, guest_session=None)
+		return SessionContext(user=None, guest_session_id=None)
 
 	normalized = normalize_guest_session_id(guest_session_id)
 	if normalized is None:
@@ -255,7 +255,7 @@ async def get_session_context(
 	session = await manager.get(to_guest_session_uuid(normalized))
 	if session is None:
 		raise UnauthorizedError("Guest session expired or invalid.")
-	return SessionContext(user=None, guest_session=session)
+	return SessionContext(user=None, guest_session_id=normalized)
 
 
 async def get_current_guest_session(
@@ -293,19 +293,3 @@ def get_connection_registry(request: Request) -> ConnectionRegistry:
 
 EventBusDep = Annotated[EventBus, Depends(get_event_bus)]
 ConnectionRegistryDep = Annotated[ConnectionRegistry, Depends(get_connection_registry)]
-
-
-@dataclass
-class SessionContext:
-	user: User | None
-	guest_session_id: str | None
-
-
-def get_session_context(
-	user: OptionalUser,
-	guest_session_id: GuestSessionId,
-) -> SessionContext:
-	return SessionContext(user=user, guest_session_id=guest_session_id)
-
-
-SessionContextDep = Annotated[SessionContext, Depends(get_session_context)]

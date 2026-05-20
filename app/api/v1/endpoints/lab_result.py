@@ -9,7 +9,7 @@ from app.api.deps import (
 	MedicalCaseRepo,
 	SessionContextDep,
 )
-from app.core.exceptions import UnauthorizedError
+from app.core.exceptions import ForbiddenError, UnauthorizedError
 from app.core.responses import SuccessResponse
 from app.schemas.lab_result import LabResultCreate, LabResultResponse, UploadRequest, UploadResponse
 from app.services.lab_result import (
@@ -40,6 +40,9 @@ async def upload(
 	Creates a MedicalCase and a LabResult in one action, then triggers
 	the OCR → AI pipeline. The upload is authenticated by user or guest session.
 	"""
+	if ctx.user is not None and payload.guest_session_id:
+		raise ForbiddenError("You cannot use a guest session while authenticated.")
+
 	if ctx.user is None and not payload.guest_session_id:
 		raise UnauthorizedError("Missing authentication or guest session.")
 
