@@ -15,33 +15,35 @@ class ConnectionRegistry:
 		self.active_connections: dict[UUID, list[WebSocket]] = {}
 		self._lock = asyncio.Lock()
 
-	def connect(self, user_id: UUID, websocket: WebSocket) -> None:
-		if user_id not in self.active_connections:
-			self.active_connections[user_id] = []
-		self.active_connections[user_id].append(websocket)
-		logger.debug(
-			"WebSocket connected",
-			extra={
-				"user_id": str(user_id),
-				"connection_count": len(self.active_connections[user_id]),
-			},
-		)
+	async def connect(self, user_id: UUID, websocket: WebSocket) -> None:
+		async with self._lock:
+			if user_id not in self.active_connections:
+				self.active_connections[user_id] = []
+			self.active_connections[user_id].append(websocket)
+			logger.debug(
+				"WebSocket connected",
+				extra={
+					"user_id": str(user_id),
+					"connection_count": len(self.active_connections[user_id]),
+				},
+			)
 
-	def disconnect(self, user_id: UUID, websocket: WebSocket) -> None:
-		if user_id in self.active_connections:
-			try:
-				self.active_connections[user_id].remove(websocket)
-				if not self.active_connections[user_id]:
-					del self.active_connections[user_id]
-				logger.debug(
-					"WebSocket disconnected",
-					extra={"user_id": str(user_id)},
-				)
-			except ValueError:
-				logger.warning(
-					"WebSocket not found in registry",
-					extra={"user_id": str(user_id)},
-				)
+	async def disconnect(self, user_id: UUID, websocket: WebSocket) -> None:
+		async with self._lock:
+			if user_id in self.active_connections:
+				try:
+					self.active_connections[user_id].remove(websocket)
+					if not self.active_connections[user_id]:
+						del self.active_connections[user_id]
+					logger.debug(
+						"WebSocket disconnected",
+						extra={"user_id": str(user_id)},
+					)
+				except ValueError:
+					logger.warning(
+						"WebSocket not found in registry",
+						extra={"user_id": str(user_id)},
+					)
 
 	async def broadcast(self, user_id: UUID, message: dict) -> None:
 		if user_id not in self.active_connections:

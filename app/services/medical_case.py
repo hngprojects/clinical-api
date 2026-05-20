@@ -75,7 +75,9 @@ async def get_case(
 
 	if user is not None:
 		if case.user_id != user.id:
-			raise ForbiddenError("You do not have access to this case.")
+			# Hide existence of the case from other users by returning
+			# a NotFound error rather than Forbidden.
+			raise NotFoundError("Medical case not found.")
 		return case
 
 	if guest_session is not None:
@@ -84,7 +86,8 @@ async def get_case(
 		valid_guest_id = await resolve_guest_session_id(guest_session_id, manager=manager)
 
 	if case.guest_session_id != valid_guest_id:
-		raise ForbiddenError("You do not have access to this case.")
+		# For guest sessions, also avoid revealing existence to non-owners.
+		raise NotFoundError("Medical case not found.")
 	await touch_guest_session(valid_guest_id, manager=manager)
 	return case
 

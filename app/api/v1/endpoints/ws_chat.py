@@ -247,7 +247,7 @@ async def websocket_chat(websocket: WebSocket) -> None:
 	case_id: UUID = init.case_id
 
 	# ── 4. Register connection
-	registry.connect(user_id, websocket)
+	await registry.connect(user_id, websocket)
 	logger.info("[ws_chat] registered user=%s case=%s", user_id, case_id)
 
 	# ── 5. Send history
@@ -308,5 +308,5 @@ async def websocket_chat(websocket: WebSocket) -> None:
 			logger.warning("[ws_chat] consumer timed out — cancelling user=%s", user_id)
 			consumer.cancel()
 
-		registry.disconnect(user_id, websocket)
+		await registry.disconnect(user_id, websocket)
 		logger.info("[ws_chat] cleaned up user=%s case=%s", user_id, case_id)
