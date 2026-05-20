@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import json
 import logging
 from typing import AsyncIterator
@@ -32,19 +33,20 @@ class EventBus:
 
 	async def disconnect(self) -> None:
 		if self.redis:
-			# Some redis clients expose a sync `close()` and/or async `aclose()`.
-			# Call `close()` if present to satisfy tests that mock a sync close,
-			# then await `aclose()` when available for proper async shutdown.
 			close = getattr(self.redis, "close", None)
 			aclose = getattr(self.redis, "aclose", None)
 			if callable(close):
 				try:
-					close()
+					result = close()
+					if inspect.isawaitable(result):
+						await result
 				except Exception:
 					logger.exception("EventBus failed to close sync connection")
 			if callable(aclose):
 				try:
-					await aclose()
+					result = aclose()
+					if inspect.isawaitable(result):
+						await result
 				except Exception:
 					logger.exception("EventBus failed to aclose async connection")
 			logger.info("EventBus disconnected from Redis")

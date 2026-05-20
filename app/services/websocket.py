@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from threading import Lock
 from uuid import UUID
 
 from fastapi import WebSocket
@@ -13,10 +14,10 @@ MAX_WEBSOCKET_MESSAGE_BYTES = 256_000
 class ConnectionRegistry:
 	def __init__(self):
 		self.active_connections: dict[UUID, list[WebSocket]] = {}
-		self._lock = asyncio.Lock()
+		self._lock = Lock()
 
-	async def connect(self, user_id: UUID, websocket: WebSocket) -> None:
-		async with self._lock:
+	def connect(self, user_id: UUID, websocket: WebSocket) -> None:
+		with self._lock:
 			if user_id not in self.active_connections:
 				self.active_connections[user_id] = []
 			self.active_connections[user_id].append(websocket)
@@ -28,8 +29,8 @@ class ConnectionRegistry:
 				},
 			)
 
-	async def disconnect(self, user_id: UUID, websocket: WebSocket) -> None:
-		async with self._lock:
+	def disconnect(self, user_id: UUID, websocket: WebSocket) -> None:
+		with self._lock:
 			if user_id in self.active_connections:
 				try:
 					self.active_connections[user_id].remove(websocket)
@@ -46,16 +47,15 @@ class ConnectionRegistry:
 					)
 
 	async def broadcast(self, user_id: UUID, message: dict) -> None:
-		if user_id not in self.active_connections:
-			return
-
 		message_json = json.dumps(message)
 		if len(message_json.encode("utf-8")) > MAX_WEBSOCKET_MESSAGE_BYTES:
 			logger.warning("WebSocket message too large", extra={"user_id": str(user_id)})
 			return
 
-		async with self._lock:
-			connections = self.active_connections[user_id][:]
+		with self._lock:
+			connections = self.active_connections.get(user_id, [])[:]
+		if not connections:
+			return
 
 		dead_sockets = []
 		for websocket in connections:
