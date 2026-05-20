@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator, field_validator
 
 from app.models.auth_session import AuthSession
 from app.schemas.user import UserResponse
@@ -20,6 +20,26 @@ class SignupRequest(BaseModel):
 	email: EmailStr
 	password: str = Field(min_length=8, max_length=72)
 	confirm_password: str = Field(min_length=8, max_length=72)
+
+	@field_validator("password")
+	@classmethod
+	def password_strength(cls, v: str) -> str:
+		errors = []
+		if len(v) < 8:
+			errors.append("at least 8 characters")
+		if not any(c.isupper() for c in v):
+			errors.append("one uppercase letter")
+		if not any(c.islower() for c in v):
+			errors.append("one lowercase letter")
+		if not any(c.isdigit() for c in v):
+			errors.append("one number")
+		if not any(c in "!@#$%^&*()_+-=[]{}|;':\",./<>?" for c in v):
+			errors.append("one special character")
+		if errors:
+			raise ValueError(
+				"Password must contain " + ", ".join(errors) + "."
+			)
+		return v
 
 	@model_validator(mode="after")
 	def passwords_match(self) -> "SignupRequest":
