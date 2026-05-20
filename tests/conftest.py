@@ -1,7 +1,7 @@
 import os
 import uuid
 
-os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/test")
+os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://postgres:summie@localhost:5432/clinsights")
 os.environ.setdefault("JWT_SECRET", "test-jwt-secret-min-32-characters-long-padding")
 os.environ.setdefault("OTP_PEPPER", "test-otp-pepper-min-32-characters-long-padding")
 

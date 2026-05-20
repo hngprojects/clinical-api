@@ -20,6 +20,7 @@ medical_case.status:
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 from typing import Any
 from uuid import UUID
@@ -247,7 +248,7 @@ async def _run_pipeline(lab_result_id: UUID) -> None:
 			await _set_ocr_status(session, lab_result_id, "failed")
 			await _set_case_status(session, case_id, "failed")
 			await _log_event(session, lab_result_id, "PIPELINE_FAILED", error="No file URL present")
-			await _publish_pipeline_event(user_id, "interpretation_failed", {"case_id": str(case_id)})
+			await _publish_pipeline_event(session, user_id, "interpretation_failed", {"case_id": str(case_id)}, case_id)
 			return
 
 		# Stage 1: OCR
@@ -292,11 +293,10 @@ async def _run_pipeline(lab_result_id: UUID) -> None:
 				duration_ms=ocr_ms,
 				error=str(exc),
 			)
-			await _publish_pipeline_event(user_id, "interpretation_failed", {"case_id": str(case_id)})
+			await _publish_pipeline_event(session, user_id, "interpretation_failed", {"case_id": str(case_id)}, case_id)
 			return
 
 		# Stage 2: AI interpretation
-
 		interp_id = await _create_interpretation(session, case_id)
 		await _log_event(
 			session,
@@ -323,7 +323,7 @@ async def _run_pipeline(lab_result_id: UUID) -> None:
 				status_after="complete",
 				duration_ms=ai_ms,
 			)
-			await _publish_pipeline_event(user_id, "interpretation_ready", {"case_id": str(case_id)})
+			await _publish_pipeline_event(session, user_id, "interpretation_ready", {"case_id": str(case_id)}, case_id)
 
 		except InterpretationError as exc:
 			ai_ms = int((time.monotonic() - ai_start) * 1000)
@@ -339,7 +339,7 @@ async def _run_pipeline(lab_result_id: UUID) -> None:
 				duration_ms=ai_ms,
 				error=str(exc),
 			)
-			await _publish_pipeline_event(user_id, "interpretation_failed", {"case_id": str(case_id)})
+			await _publish_pipeline_event(session, user_id, "interpretation_failed", {"case_id": str(case_id)}, case_id)
 
 
 async def _get_lab_result(session, lab_result_id: UUID):  # type: ignore[no-untyped-def]
@@ -385,16 +385,55 @@ async def _log_event(
 
 
 async def _publish_pipeline_event(
+	session,
 	user_id: UUID | None,
 	event_type: str,
 	payload: dict,
+	case_id: UUID | None = None,
 ) -> None:
-	"""Publish an event via the EventBus singleton. Skipped for guest cases."""
+	"""Persist a pipeline notification and publish it if the user wants completion alerts."""
 	if user_id is None:
 		return  # guest case — no event to publish
+
+	from app.models.notification import Notification, NotificationType
+	from app.models.user import User
+	from app.repositories.notification import NotificationRepository
+
+	user = await session.get(User, user_id)
+	if user is None or not user.notify_on_complete:
+		return
+
+	notif_type = NotificationType(event_type)
+	notif_repo = NotificationRepository(session)
+	notification = await notif_repo.get_by_user_case_and_type(user_id, case_id, notif_type)
+	# Test doubles may return awaitables from mocked repository/session paths.
+	if inspect.isawaitable(notification):
+		notification = await notification
+	if notification is None:
+		notification = Notification(
+			user_id=user_id,
+			medical_case_id=case_id,
+			type=notif_type,
+			title=(
+				"Interpretation ready"
+				if notif_type == NotificationType.INTERPRETATION_READY
+				else "Interpretation failed"
+			),
+			message=(
+				{"text": "Your interpretation is ready."}
+				if notif_type == NotificationType.INTERPRETATION_READY
+				else {"text": "Your interpretation failed."}
+			),
+			data=payload,
+		)
+		session.add(notification)
+		await session.commit()
+		await session.refresh(notification)
+
+	payload_with_id = {**payload, "notification_id": str(notification.id)}
 	try:
 		bus = await _get_event_bus()
-		await bus.publish(user_id, event_type, payload)
+		await bus.publish(user_id, event_type, payload_with_id)
 		logger.debug("[events] published %s for user_id=%s", event_type, user_id)
 	except Exception as exc:
 		logger.warning(

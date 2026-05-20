@@ -3,7 +3,7 @@ from typing import Annotated
 from uuid import UUID
 
 import jwt
-from fastapi import Depends, Header, Request
+from fastapi import Depends, Header, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,9 +33,9 @@ from app.repositories.user import UserRepository
 from app.repositories.waitlist import WaitlistRepository
 from app.services.auth.tokens import decode_access_token
 from app.services.auth_sessions import AuthSessionManager
+from app.services.events import EventBus
 from app.services.guest import normalize_guest_session_id, to_guest_session_uuid
 from app.services.guest_sessions import GuestSessionManager
-from app.services.events import EventBus
 from app.services.websocket import ConnectionRegistry
 
 DBSession = Annotated[AsyncSession, Depends(get_session)]
@@ -106,6 +106,8 @@ def get_guest_session_manager(
 	guest_session_repo: Annotated[GuestSessionRepository, Depends(get_guest_session_repo)],
 ) -> GuestSessionManager:
 	return GuestSessionManager(guest_session_repo)
+
+
 def get_pipeline_audit_log_repo(session: DBSession) -> PipelineAuditLogRepository:
 	return PipelineAuditLogRepository(session)
 
@@ -268,7 +270,11 @@ CurrentGuestSessionDep = Annotated[GuestSession, Depends(get_current_guest_sessi
 
 
 def get_event_bus(request: Request) -> EventBus:
-	return request.app.state.event_bus
+	# Return the app's EventBus instance, or a 503 if it's not configured.
+	eb = getattr(request.app.state, "event_bus", None)
+	if eb is None:
+		raise HTTPException(status_code=503, detail="Event bus unavailable")
+	return eb
 
 
 def get_connection_registry(request: Request) -> ConnectionRegistry:

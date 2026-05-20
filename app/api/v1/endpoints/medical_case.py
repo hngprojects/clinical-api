@@ -9,9 +9,8 @@ from app.api.deps import (
 	GuestSessionManagerDep,
 	LabResultRepo,
 	MedicalCaseRepo,
-	SessionContextDep,
-	OptionalUser,
 	PipelineAuditLogRepo,
+	SessionContextDep,
 )
 from app.core.responses import SuccessResponse
 from app.schemas.ai_interpretation import AIInterpretationResponse

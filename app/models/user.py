@@ -45,6 +45,11 @@ class User(Base):
 		nullable=False,
 		default=False,
 	)
+	notify_on_complete: Mapped[bool] = mapped_column(
+		Boolean,
+		nullable=False,
+		default=True,
+	)
 	is_active: Mapped[bool] = mapped_column(
 		Boolean,
 		nullable=False,
