@@ -277,7 +277,8 @@ async def forgot_password(
 		raw = await create_password_reset(reset_repo, user)
 		await session.commit()
 		try:
-			send_password_reset_email_task.delay(user.email, raw)
+			reset_url = f"clinsight://new-password?token={raw}"
+			send_password_reset_email_task.delay(user.email, raw, reset_url)
 		except Exception:
 			logger.exception("Failed to enqueue password reset email for %s", _mask_email(user.email))
 	return SuccessResponse(message="If this email is registered, you'll receive a reset link shortly.")
