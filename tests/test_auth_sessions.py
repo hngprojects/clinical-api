@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import uuid
+from unittest.mock import patch
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
+from app.core.security import verify_password
 from app.db.session import AsyncSessionLocal
+from app.models.otp import OtpCode, OtpPurpose
 from app.models.auth_session import AuthSession
 from app.models.user import User, UserRole
 from app.repositories.auth_session import AuthSessionRepository
@@ -37,6 +40,17 @@ async def _create_verified_user(*, password: str = "Password123!") -> User:
 		await db.commit()
 		await db.refresh(user)
 	return user
+
+
+async def _latest_reset_otp(user_id: uuid.UUID) -> OtpCode | None:
+	async with AsyncSessionLocal() as db:
+		return (
+			await db.execute(
+				select(OtpCode)
+				.where(OtpCode.user_id == user_id, OtpCode.purpose == OtpPurpose.RESET_PASSWORD)
+				.order_by(OtpCode.created_at.desc())
+			)
+		).scalar_one_or_none()
 
 
 async def test_login_creates_auth_session_row(client: AsyncClient) -> None:
@@ -160,4 +174,59 @@ async def test_logout_revokes_auth_session_row(client: AsyncClient) -> None:
 
 	async with AsyncSessionLocal() as db:
 		await db.delete(user)
+		await db.commit()
+
+
+async def test_forgot_password_sends_six_digit_otp(client: AsyncClient) -> None:
+	user = await _create_verified_user()
+
+	with patch("app.api.v1.endpoints.auth.send_otp_email_task.delay") as mock_delay:
+		response = await client.post("/api/v1/auth/forgot-password", json={"email": user.email})
+
+	assert response.status_code == 200
+	assert mock_delay.called
+	assert mock_delay.call_args.kwargs["to_email"] == user.email
+	assert mock_delay.call_args.kwargs["purpose"] == OtpPurpose.RESET_PASSWORD.value
+	code = mock_delay.call_args.kwargs["code"]
+	assert len(code) == 6
+	assert code.isdigit()
+
+	otp_row = await _latest_reset_otp(user.id)
+	assert otp_row is not None
+	assert otp_row.purpose == OtpPurpose.RESET_PASSWORD
+
+	async with AsyncSessionLocal() as db:
+		await db.delete(user)
+		await db.commit()
+
+
+async def test_reset_password_accepts_otp_and_changes_password(client: AsyncClient) -> None:
+	user = await _create_verified_user()
+	new_password = "NewPassword123!"
+
+	with patch("app.api.v1.endpoints.auth.send_otp_email_task.delay") as mock_delay:
+		forgot = await client.post("/api/v1/auth/forgot-password", json={"email": user.email})
+	assert forgot.status_code == 200
+	code = mock_delay.call_args.kwargs["code"]
+
+	reset = await client.post(
+		"/api/v1/auth/reset-password",
+		json={"email": user.email, "token": code, "new_password": new_password},
+	)
+	assert reset.status_code == 200
+	assert reset.json()["message"] == "Password reset successfully."
+
+	async with AsyncSessionLocal() as db:
+		updated = await db.get(User, user.id)
+		assert updated is not None
+		assert verify_password(new_password, updated.password_hash)
+
+	login = await client.post(
+		"/api/v1/auth/login",
+		json={"email": user.email, "password": new_password, "device_id": "reset-device"},
+	)
+	assert login.status_code == 200
+
+	async with AsyncSessionLocal() as db:
+		await db.delete(updated)
 		await db.commit()
