@@ -1,5 +1,7 @@
 from datetime import datetime
+from html import escape
 from io import BytesIO
+from typing import Any
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -15,6 +17,7 @@ from reportlab.platypus import (
 )
 
 from app.models.ai_interpretation import AIInterpretation, RiskLevel
+from app.models.lab_result import LabResult
 from app.models.medical_case import MedicalCase
 from app.models.user import User
 
@@ -88,8 +91,31 @@ def _get_styles() -> dict:
 	}
 
 
+def _as_value_breakdown_items(value_breakdown: Any) -> list[dict[str, Any]]:
+	if not value_breakdown:
+		return []
+	if isinstance(value_breakdown, list):
+		items = value_breakdown
+	elif isinstance(value_breakdown, dict):
+		items = value_breakdown.get("tests", [])
+	else:
+		items = []
+	return [item if isinstance(item, dict) else {} for item in items]
+
+
+def _as_question_list(suggested_questions: Any) -> list[str]:
+	if not suggested_questions:
+		return []
+	if isinstance(suggested_questions, list):
+		return [str(question) for question in suggested_questions]
+	if isinstance(suggested_questions, dict):
+		return [str(question) for question in suggested_questions.get("questions", [])]
+	return [str(suggested_questions)]
+
+
 def generate_pdf(
 	case: MedicalCase,
+	lab_result: LabResult,
 	interpretation: AIInterpretation,
 	user: User | None,
 ) -> bytes:
@@ -98,6 +124,7 @@ def generate_pdf(
 
 	Args:
 		case: The MedicalCase record.
+		lab_result: The latest LabResult record.
 		interpretation: The AIInterpretation record.
 		user: The authenticated user, or None for guests.
 
@@ -112,16 +139,17 @@ def generate_pdf(
 		leftMargin=20 * mm,
 		topMargin=20 * mm,
 		bottomMargin=20 * mm,
+		pageCompression=0,
 	)
 
 	styles = _get_styles()
 	story = []
 
 	# ── Header ──────────────────────────────────────────────────────────────
-	patient_name = f"{user.first_name} {user.last_name}".strip() if user else "Guest"
+	patient_name = escape(f"{user.first_name} {user.last_name}".strip()) if user else "Guest"
 	upload_date = (
-		interpretation.generated_at.strftime("%B %d, %Y at %H:%M UTC")
-		if interpretation.generated_at
+		lab_result.created_at.strftime("%B %d, %Y at %H:%M UTC")
+		if lab_result.created_at
 		else datetime.utcnow().strftime("%B %d, %Y")
 	)
 
@@ -161,24 +189,26 @@ def generate_pdf(
 	story.append(Spacer(1, 4 * mm))
 
 	# ── AI Summary ───────────────────────────────────────────────────────────
-	if interpretation.summary:
-		story.append(Paragraph("AI Summary", styles["section"]))
-		story.append(Paragraph(interpretation.summary, styles["body"]))
-		story.append(Spacer(1, 4 * mm))
+	story.append(Paragraph("AI Summary", styles["section"]))
+	story.append(
+		Paragraph(escape(interpretation.summary) if interpretation.summary else "No AI summary available.", styles["body"])
+	)
+	story.append(Spacer(1, 4 * mm))
 
 	# ── Value Breakdown Table ────────────────────────────────────────────────
-	if interpretation.value_breakdown:
-		story.append(Paragraph("Lab Results Breakdown", styles["section"]))
+	story.append(Paragraph("Lab Results Breakdown", styles["section"]))
+	value_breakdown = _as_value_breakdown_items(interpretation.value_breakdown)
+	if value_breakdown:
 
 		headers = ["Metric", "Value", "Unit", "Status"]
 		rows = [headers]
-		for item in interpretation.value_breakdown:
+		for item in value_breakdown:
 			rows.append(
 				[
-					item.metric or "",
-					str(item.value) if item.value is not None else "",
-					item.unit or "",
-					(item.status or "").upper(),
+					escape(str(item.get("metric", "") or "")),
+					escape(str(item.get("value", "") or "")),
+					escape(str(item.get("unit", "") or "")),
+					escape(str(item.get("status", "") or "")).upper(),
 				]
 			)
 
@@ -201,22 +231,27 @@ def generate_pdf(
 		]
 
 		# Color status column per value
-		for row_idx, item in enumerate(interpretation.value_breakdown, start=1):
-			status_key = (item.status or "").lower()
+		for row_idx, item in enumerate(value_breakdown, start=1):
+			status_key = str(item.get("status", "") or "").lower()
 			color = STATUS_COLORS.get(status_key, colors.HexColor("#333333"))
 			table_style.append(("TEXTCOLOR", (3, row_idx), (3, row_idx), color))
 			table_style.append(("FONTNAME", (3, row_idx), (3, row_idx), "Helvetica-Bold"))
 
 		breakdown_table.setStyle(TableStyle(table_style))
 		story.append(breakdown_table)
-		story.append(Spacer(1, 4 * mm))
+	else:
+		story.append(Paragraph("No lab value breakdown available.", styles["body"]))
+	story.append(Spacer(1, 4 * mm))
 
 	# ── Suggested Questions ──────────────────────────────────────────────────
-	if interpretation.suggested_questions:
-		story.append(Paragraph("Suggested Questions for Your Doctor", styles["section"]))
-		for i, question in enumerate(interpretation.suggested_questions, start=1):
-			story.append(Paragraph(f"{i}. {question}", styles["question"]))
-		story.append(Spacer(1, 4 * mm))
+	story.append(Paragraph("Suggested Questions for Your Doctor", styles["section"]))
+	questions = _as_question_list(interpretation.suggested_questions)
+	if questions:
+		for i, question in enumerate(questions, start=1):
+			story.append(Paragraph(f"{i}. {escape(question)}", styles["question"]))
+	else:
+		story.append(Paragraph("No suggested follow-up questions available.", styles["body"]))
+	story.append(Spacer(1, 4 * mm))
 
 	# ── Disclaimer ───────────────────────────────────────────────────────────
 	story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#CCCCCC")))
