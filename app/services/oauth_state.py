@@ -25,7 +25,11 @@ class OAuthStatePayload:
 
 def _is_allowed_return_url(candidate: str, frontend_callback_url: str) -> bool:
 	parsed_candidate = urlparse(candidate)
-	if parsed_candidate.scheme == "clinsight" and parsed_candidate.netloc == "auth" and parsed_candidate.path == "/google":
+	if (
+		parsed_candidate.scheme == "clinsight"
+		and parsed_candidate.netloc == "auth"
+		and parsed_candidate.path == "/google"
+	):
 		return True
 
 	parsed_frontend = urlparse(frontend_callback_url)
