@@ -2,13 +2,27 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query, status
 
-from app.api.deps import CurrentUser, GuestSessionId, MedicalCaseRepo, OptionalUser
+from app.api.deps import (
+	AIInterpretationRepo,
+	ChatRepo,
+	CurrentUser,
+	GuestSessionManagerDep,
+	LabResultRepo,
+	MedicalCaseRepo,
+	PipelineAuditLogRepo,
+	SessionContextDep,
+)
 from app.core.responses import SuccessResponse
-from app.schemas.medical_case import MedicalCaseResponse
+from app.schemas.ai_interpretation import AIInterpretationResponse
+from app.schemas.chat import ChatResponse
+from app.schemas.lab_result import LabResultResponse
+from app.schemas.medical_case import MedicalCaseDetailResponse, MedicalCaseResponse
+from app.schemas.pipeline_audit_log import PipelineAuditLogResponse
 from app.services.medical_case import (
 	complete_case,
 	create_case_for_user,
 	get_case,
+	get_case_full,
 	list_cases_for_user,
 )
 
@@ -56,17 +70,60 @@ async def list_mine(
 
 
 @router.get(
+	"/{case_id}/full",
+	response_model=SuccessResponse[MedicalCaseDetailResponse],
+)
+async def retrieve_full(
+	case_id: UUID,
+	ctx: SessionContextDep,
+	manager: GuestSessionManagerDep,
+	case_repo: MedicalCaseRepo,
+	lab_repo: LabResultRepo,
+	interp_repo: AIInterpretationRepo,
+	chat_repo: ChatRepo,
+) -> SuccessResponse[MedicalCaseDetailResponse]:
+	"""Return case, lab results, latest interpretation, and chat in one response."""
+	detail = await get_case_full(
+		case_repo,
+		lab_repo,
+		interp_repo,
+		chat_repo,
+		case_id,
+		user=ctx.user,
+		guest_session_id=ctx.guest_session_id,
+		manager=manager,
+	)
+	return SuccessResponse(
+		message="OK",
+		data=MedicalCaseDetailResponse(
+			case=MedicalCaseResponse.model_validate(detail.case),
+			lab_results=[LabResultResponse.model_validate(lr) for lr in detail.lab_results],
+			interpretation=AIInterpretationResponse.model_validate(detail.interpretation)
+			if detail.interpretation is not None
+			else None,
+			chats=[ChatResponse.model_validate(c) for c in detail.chats],
+		),
+	)
+
+
+@router.get(
 	"/{case_id}",
 	response_model=SuccessResponse[MedicalCaseResponse],
 )
 async def retrieve(
 	case_id: UUID,
-	current_user: OptionalUser,
-	guest_session_id: GuestSessionId,
+	ctx: SessionContextDep,
+	manager: GuestSessionManagerDep,
 	case_repo: MedicalCaseRepo,
 ) -> SuccessResponse[MedicalCaseResponse]:
 	"""Retrieve a single medical case (ownership enforced by user or guest_session_id)."""
-	case = await get_case(case_repo, case_id, user=current_user, guest_session_id=guest_session_id)
+	case = await get_case(
+		case_repo,
+		case_id,
+		user=ctx.user,
+		guest_session_id=ctx.guest_session_id,
+		manager=manager,
+	)
 	return SuccessResponse(
 		message="OK",
 		data=MedicalCaseResponse.model_validate(case),
@@ -88,3 +145,25 @@ async def mark_complete(
 		message="Case marked as complete.",
 		data=MedicalCaseResponse.model_validate(case),
 	)
+
+
+@router.get(
+	"/{case_id}/pipeline-log",
+	response_model=SuccessResponse[list[PipelineAuditLogResponse]],
+)
+async def pipeline_log(
+	case_id: UUID,
+	current_user: CurrentUser,
+	case_repo: MedicalCaseRepo,
+	lab_repo: LabResultRepo,
+	audit_repo: PipelineAuditLogRepo,
+) -> SuccessResponse[list[PipelineAuditLogResponse]]:
+	"""Return pipeline audit log entries for all lab results in a case."""
+	case = await get_case(case_repo, case_id, user=current_user)
+	lab_results = await lab_repo.list_by_case(case.id)
+	entries: list[PipelineAuditLogResponse] = []
+	for lr in lab_results:
+		logs = await audit_repo.list_by_lab_result(lr.id)
+		entries.extend(PipelineAuditLogResponse.model_validate(log) for log in logs)
+	entries.sort(key=lambda e: e.created_at)
+	return SuccessResponse(message="OK", data=entries)

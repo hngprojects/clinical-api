@@ -4,6 +4,9 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from app.models.medical_case import MedicalCaseStatus
+from app.schemas.ai_interpretation import AIInterpretationResponse
+from app.schemas.chat import ChatResponse
+from app.schemas.lab_result import LabResultResponse
 
 
 class MedicalCaseBase(BaseModel):
@@ -14,7 +17,7 @@ class MedicalCaseCreate(MedicalCaseBase):
 	"""Schema for creating a medical case."""
 
 	user_id: UUID | None = None
-	guest_session_id: str | None = None
+	guest_session_id: UUID | None = None
 
 	@model_validator(mode="after")
 	def check_user_or_guest(self) -> "MedicalCaseCreate":
@@ -35,8 +38,17 @@ class MedicalCaseResponse(MedicalCaseBase):
 
 	id: UUID
 	user_id: UUID | None = None
-	guest_session_id: str | None = None
+	guest_session_id: UUID | None = None
 	created_at: datetime
 	completed_at: datetime | None = None
 
 	model_config = ConfigDict(from_attributes=True)
+
+
+class MedicalCaseDetailResponse(BaseModel):
+	"""Single payload for case history: case, labs, latest interpretation, chat thread."""
+
+	case: MedicalCaseResponse
+	lab_results: list[LabResultResponse]
+	interpretation: AIInterpretationResponse | None = None
+	chats: list[ChatResponse]

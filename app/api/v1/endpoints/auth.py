@@ -2,16 +2,21 @@ import logging
 from datetime import datetime, timezone
 from typing import Annotated
 from urllib.parse import urlencode
+from uuid import UUID
 
-from fastapi import APIRouter, Cookie, Depends, status
+from fastapi import APIRouter, Cookie, Depends, Query, Request, status
 from fastapi.responses import RedirectResponse, Response
 from fastapi.security import HTTPAuthorizationCredentials
 
 from app.api.deps import (
+	AuthSessionManagerDep,
+	ChatRepo,
+	ClientIpHash,
 	CurrentUser,
 	DBSession,
+	GuestSessionId,
+	MedicalCaseRepo,
 	OtpRepo,
-	PasswordResetRepo,
 	TokenBlocklistRepo,
 	UserRepo,
 	bearer_scheme,
@@ -19,8 +24,10 @@ from app.api.deps import (
 from app.core.config import get_settings
 from app.core.exceptions import UnauthorizedError
 from app.core.responses import SuccessResponse
+from app.core.security import hash_opaque_token, hash_password
 from app.models.otp import OtpPurpose
 from app.schemas.auth import (
+	AuthSessionResponse,
 	ForgotPasswordRequest,
 	LoginRequest,
 	OtpDispatchResponse,
@@ -34,25 +41,24 @@ from app.schemas.user import UserResponse
 from app.services.auth import (
 	authenticate_credentials,
 	authenticate_otp,
-	create_access_token,
-	create_password_reset,
-	create_refresh_token,
+	create_otp_for_user,
 	decode_access_token,
 	decode_refresh_token,
 	otp_ttl_seconds,
 	resend_otp,
-	reset_password,
 	revoke_refresh_token,
-	rotate_all_tokens,
 	signup_user,
+	verify_otp_for_user,
 )
 from app.services.auth.blocklist import is_token_revoked, revoke_token
+from app.services.guest import migrate_guest_session_to_user
 from app.services.oauth import (
 	exchange_google_code,
 	fetch_google_user_info,
 	get_or_create_google_user,
 )
-from app.tasks.email import send_otp_email_task, send_password_reset_email_task
+from app.services.oauth_state import create_oauth_state, decode_oauth_state
+from app.tasks.emails import send_otp_email_task
 
 logger = logging.getLogger(__name__)
 
@@ -122,23 +128,31 @@ async def signup(
 )
 async def login(
 	payload: LoginRequest,
+	request: Request,
 	user_repo: UserRepo,
+	auth_manager: AuthSessionManagerDep,
+	ip_hash: ClientIpHash,
 	response: Response,
 ) -> SuccessResponse[TokenResponse]:
 	"""Authenticate with email + password. Returns a JWT on success.
 
 	The account must have a verified email before login is permitted.
 	"""
-	user, access_token, ttl_seconds, refresh_token = await authenticate_credentials(
-		user_repo, email=payload.email, password=payload.password
+	user = await authenticate_credentials(user_repo, email=payload.email, password=payload.password)
+	issue = await auth_manager.create(
+		user.id,
+		payload.device_id,
+		platform=payload.platform,
+		ip_hash=ip_hash,
+		user_agent=request.headers.get("user-agent"),
 	)
-	_set_refresh_cookie(response, refresh_token)
+	_set_refresh_cookie(response, issue.refresh_token)
 	return SuccessResponse(
 		message="Logged in successfully.",
 		data=TokenResponse(
-			access_token=access_token,
+			access_token=issue.access_token,
 			token_type="bearer",
-			expires_in=ttl_seconds,
+			expires_in=issue.expires_in,
 			user=UserResponse.model_validate(user),
 		),
 	)
@@ -151,23 +165,45 @@ async def login(
 )
 async def verify_otp(
 	payload: VerifyOtpRequest,
+	request: Request,
+	guest_session_id: GuestSessionId,
 	user_repo: UserRepo,
 	otp_repo: OtpRepo,
+	case_repo: MedicalCaseRepo,
+	chat_repo: ChatRepo,
+	auth_manager: AuthSessionManagerDep,
+	ip_hash: ClientIpHash,
 	response: Response,
 ) -> SuccessResponse[TokenResponse]:
 	"""Verify the email-verification OTP sent after signup."""
-	user, access_token, ttl_seconds, refresh_token = await authenticate_otp(
+	user = await authenticate_otp(
 		user_repo,
 		otp_repo,
 		email=payload.email,
 		code=payload.code,
 	)
-	_set_refresh_cookie(response, refresh_token)
+	migration_guest_id = payload.guest_session_id or guest_session_id
+	if migration_guest_id:
+		await migrate_guest_session_to_user(
+			case_repo,
+			chat_repo,
+			guest_session_id=migration_guest_id,
+			user_id=user.id,
+		)
+	issue = await auth_manager.create(
+		user.id,
+		payload.device_id,
+		platform=payload.platform,
+		ip_hash=ip_hash,
+		user_agent=request.headers.get("user-agent"),
+	)
+	_set_refresh_cookie(response, issue.refresh_token)
 	return SuccessResponse(
 		message="Email verified. Welcome!",
 		data=TokenResponse(
-			access_token=access_token,
-			expires_in=ttl_seconds,
+			access_token=issue.access_token,
+			token_type="bearer",
+			expires_in=issue.expires_in,
 			user=UserResponse.model_validate(user),
 		),
 	)
@@ -227,23 +263,23 @@ async def me(current_user: CurrentUser) -> SuccessResponse[UserResponse]:
 async def forgot_password(
 	request: ForgotPasswordRequest,
 	user_repo: UserRepo,
-	reset_repo: PasswordResetRepo,
+	otp_repo: OtpRepo,
 	session: DBSession,
 ) -> SuccessResponse:
-	"""Send a password-reset email.
+	"""Send an OTP to the user's email to allow password reset.
 
 	Always returns 200 regardless of whether the email is registered to prevent
 	user-enumeration attacks.
 	"""
 	user = await user_repo.get_by_email(request.email.strip().lower())
 	if user:
-		raw = await create_password_reset(reset_repo, user)
+		_, code = await create_otp_for_user(otp_repo, user_id=user.id, purpose=OtpPurpose.RESET_PASSWORD)
 		await session.commit()
 		try:
-			send_password_reset_email_task.delay(user.email, raw)
+			send_otp_email_task.delay(to_email=user.email, code=code, purpose=OtpPurpose.RESET_PASSWORD.value)
 		except Exception:
-			logger.exception("Failed to enqueue password reset email for %s", _mask_email(user.email))
-	return SuccessResponse(message="If this email is registered, you'll receive a reset link shortly.")
+			logger.exception("Failed to enqueue password reset OTP for %s", _mask_email(user.email))
+	return SuccessResponse(message="If this email is registered, you'll receive a reset code shortly.")
 
 
 @router.post(
@@ -252,13 +288,22 @@ async def forgot_password(
 )
 async def password_reset(
 	request: ResetPasswordRequest,
-	reset_repo: PasswordResetRepo,
 	user_repo: UserRepo,
-	session: DBSession,
+	otp_repo: OtpRepo,
 ) -> SuccessResponse:
-	"""Reset password using the token from the reset email."""
-	await reset_password(reset_repo, user_repo, request.token, request.new_password)
-	await session.commit()
+	"""Reset password using an OTP sent to the user's email."""
+	user = await user_repo.get_by_email(request.email.strip().lower())
+	if not user:
+		raise UnauthorizedError("Invalid or expired reset OTP")
+
+	try:
+		await verify_otp_for_user(otp_repo, user_id=user.id, purpose=OtpPurpose.RESET_PASSWORD, code=request.token)
+	except Exception:
+		await user_repo.commit()
+		raise UnauthorizedError("Invalid or expired reset OTP")
+
+	user.password_hash = hash_password(request.new_password)
+	await user_repo.commit()
 	return SuccessResponse(message="Password reset successfully.")
 
 
@@ -270,6 +315,7 @@ async def password_reset(
 )
 async def logout(
 	current_user: CurrentUser,
+	auth_manager: AuthSessionManagerDep,
 	blocklist_repo: TokenBlocklistRepo,
 	credentials: Annotated[HTTPAuthorizationCredentials, Depends(bearer_scheme)],
 	refresh_token: Annotated[str | None, Cookie()] = None,
@@ -291,21 +337,32 @@ async def logout(
 		user_id=current_user.id,
 		expires_at=access_token_expires_at,
 	)
+	await auth_manager.revoke_by_refresh_token(refresh_token)
 	await revoke_refresh_token(refresh_token, blocklist_repo)
 	return SuccessResponse(message="Logged out successfully.")
 
 
 # Google OAuth
 @router.get("/google")
-async def google_login() -> RedirectResponse:
+async def google_login(
+	guest_session_id: str | None = Query(None, description="Guest session to migrate after OAuth"),
+	device_id: str | None = Query(None, description="Client device identifier for per-device auth session"),
+	platform: str | None = Query("web", description="Client platform (web, ios, android)"),
+) -> RedirectResponse:
 	"""Redirect to Google's OAuth consent screen."""
 	settings = get_settings()
+	oauth_state = create_oauth_state(
+		guest_session_id=guest_session_id,
+		device_id=device_id,
+		platform=platform,
+	)
 	query_params = urlencode(
 		{
 			"client_id": settings.GOOGLE_CLIENT_ID,
 			"redirect_uri": settings.GOOGLE_REDIRECT_URI,
 			"response_type": "code",
 			"scope": "openid email profile",
+			"state": oauth_state,
 		}
 	)
 	google_auth_url = f"https://accounts.google.com/o/oauth2/v2/auth?{query_params}"
@@ -315,8 +372,14 @@ async def google_login() -> RedirectResponse:
 @router.get("/google/callback")
 async def google_callback(
 	code: str,
+	request: Request,
 	user_repo: UserRepo,
+	case_repo: MedicalCaseRepo,
+	chat_repo: ChatRepo,
+	auth_manager: AuthSessionManagerDep,
+	ip_hash: ClientIpHash,
 	response: Response,
+	state: str = "",
 ) -> RedirectResponse:
 	"""Handle the Google OAuth callback and redirect to the frontend with app tokens."""
 	token_data = await exchange_google_code(code)
@@ -327,9 +390,35 @@ async def google_callback(
 	google_user = await fetch_google_user_info(google_access_token)
 	user = await get_or_create_google_user(user_repo, google_user)
 
-	app_access_token, _ttl_seconds = create_access_token(user.id)
-	refresh_token = await create_refresh_token(user.id)
-	_set_refresh_cookie(response, refresh_token)
+	oauth_ctx = decode_oauth_state(state)
+	guest_id = oauth_ctx.guest_session_id if oauth_ctx else None
+	if guest_id:
+		await migrate_guest_session_to_user(
+			case_repo,
+			chat_repo,
+			guest_session_id=guest_id,
+			user_id=user.id,
+		)
+
+	if oauth_ctx and oauth_ctx.device_id:
+		oauth_device_id = oauth_ctx.device_id
+	elif oauth_ctx and oauth_ctx.guest_session_id:
+		oauth_device_id = f"guest-{oauth_ctx.guest_session_id[:8]}"
+	else:
+		ua = request.headers.get("user-agent", "unknown")
+		oauth_device_id = f"google-{hash_opaque_token(ua)[:16]}"
+
+	oauth_platform = oauth_ctx.platform if oauth_ctx and oauth_ctx.platform else "web"
+
+	issue = await auth_manager.create(
+		user.id,
+		oauth_device_id,
+		platform=oauth_platform,
+		ip_hash=ip_hash,
+		user_agent=request.headers.get("user-agent"),
+	)
+	_set_refresh_cookie(response, issue.refresh_token)
+	app_access_token = issue.access_token
 
 	settings = get_settings()
 	redirect_url = f"{settings.FRONTEND_AUTH_CALLBACK_URL}?{urlencode({'access_token': app_access_token})}"
@@ -339,15 +428,15 @@ async def google_callback(
 # Token refresh
 @router.post("/refresh", response_model=SuccessResponse[TokenResponse])
 async def refresh(
-	user_repo: UserRepo,
+	auth_manager: AuthSessionManagerDep,
 	blocklist_repo: TokenBlocklistRepo,
 	response: Response,
 	refresh_token: Annotated[str | None, Cookie()] = None,
 ) -> SuccessResponse[TokenResponse]:
 	"""Refresh the access and refresh tokens.
 
-	Validates the inbound refresh token, ensures it has not been revoked,
-	revokes it (rotation), then mints a fresh access/refresh pair.
+	Validates the inbound refresh token against auth_sessions, blocklists the
+	old refresh JWT, then rotates to a new access/refresh pair on the same device.
 	"""
 	if not refresh_token:
 		raise UnauthorizedError("Refresh token cookie is required")
@@ -356,14 +445,71 @@ async def refresh(
 	if await is_token_revoked(blocklist_repo, refresh_token_jti):
 		raise UnauthorizedError("Refresh token has been revoked")
 	await revoke_refresh_token(refresh_token, blocklist_repo)
-	tokens = await rotate_all_tokens(user_repo=user_repo, refresh_token=refresh_token)
+	issue = await auth_manager.rotate_refresh(refresh_token)
 
-	_set_refresh_cookie(response, tokens["refresh_token"])
+	_set_refresh_cookie(response, issue.refresh_token)
 	return SuccessResponse(
 		message="Tokens refreshed",
 		data=TokenResponse(
-			access_token=tokens["access_token"],
+			access_token=issue.access_token,
 			token_type="bearer",
-			expires_in=tokens["expires_in"],
+			expires_in=issue.expires_in,
 		),
 	)
+
+
+@router.get(
+	"/sessions",
+	response_model=SuccessResponse[list[AuthSessionResponse]],
+)
+async def list_sessions(
+	current_user: CurrentUser,
+	auth_manager: AuthSessionManagerDep,
+) -> SuccessResponse[list[AuthSessionResponse]]:
+	"""List active device sessions for the authenticated user."""
+	sessions = await auth_manager.list_sessions(current_user.id)
+	return SuccessResponse(
+		message="OK",
+		data=[AuthSessionResponse.from_session(s) for s in sessions],
+	)
+
+
+@router.delete(
+	"/sessions/{session_id}",
+	response_model=SuccessResponse,
+)
+async def revoke_session(
+	session_id: UUID,
+	current_user: CurrentUser,
+	auth_manager: AuthSessionManagerDep,
+) -> SuccessResponse:
+	"""Revoke a single device session."""
+	await auth_manager.revoke(session_id, current_user.id)
+	return SuccessResponse(message="Session revoked.")
+
+
+@router.delete(
+	"/sessions",
+	response_model=SuccessResponse,
+)
+async def revoke_all_sessions(
+	current_user: CurrentUser,
+	auth_manager: AuthSessionManagerDep,
+	blocklist_repo: TokenBlocklistRepo,
+	credentials: Annotated[HTTPAuthorizationCredentials, Depends(bearer_scheme)],
+	refresh_token: Annotated[str | None, Cookie()] = None,
+) -> SuccessResponse:
+	"""Revoke every device session for the current user."""
+	count = await auth_manager.revoke_all(current_user.id)
+	if refresh_token:
+		await auth_manager.revoke_by_refresh_token(refresh_token)
+		await revoke_refresh_token(refresh_token, blocklist_repo)
+	if credentials is not None and credentials.scheme.lower() == "bearer":
+		payload = decode_access_token(credentials.credentials)
+		await revoke_token(
+			blocklist_repo,
+			jti=payload["jti"],
+			user_id=current_user.id,
+			expires_at=datetime.fromtimestamp(payload["exp"], tz=timezone.utc),
+		)
+	return SuccessResponse(message=f"Revoked {count} session(s).")

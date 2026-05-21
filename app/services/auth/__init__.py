@@ -4,8 +4,9 @@ from app.services.auth.account import (
 	otp_ttl_seconds,
 	resend_otp,
 	signup_user,
+	start_email_change,
+	verify_email_change,
 )
-from app.services.auth.email import send_otp_email, send_password_reset_email
 from app.services.auth.otp import (
 	create_otp_for_user,
 	verify_otp_for_user,
@@ -21,19 +22,19 @@ from app.services.auth.tokens import (
 	decode_access_token,
 	decode_refresh_token,
 	revoke_refresh_token,
-	rotate_all_tokens,
 )
+from app.services.auth_sessions import AuthSessionManager
 
 __all__ = [
 	"signup_user",
 	"authenticate_credentials",
 	"authenticate_otp",
 	"resend_otp",
+	"start_email_change",
+	"verify_email_change",
 	"otp_ttl_seconds",
 	"create_otp_for_user",
 	"verify_otp_for_user",
-	"send_otp_email",
-	"send_password_reset_email",
 	"create_password_reset",
 	"reset_password",
 	"delete_password_reset_by_raw_token",
@@ -42,5 +43,5 @@ __all__ = [
 	"decode_access_token",
 	"decode_refresh_token",
 	"revoke_refresh_token",
-	"rotate_all_tokens",
+	"AuthSessionManager",
 ]

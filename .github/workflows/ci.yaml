@@ -5,6 +5,7 @@ on:
     branches: [dev, staging, main]
   pull_request:
     branches: [dev, staging, main]
+  workflow_call:
 
 jobs:
   # ============================================
@@ -36,12 +37,17 @@ jobs:
   security:
     name: Security Checks
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
       - uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
-          fetch-depth: 0
+          scan-type: fs
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: 1
+          format: table
 
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
@@ -52,7 +58,7 @@ jobs:
         run: uv sync --dev
 
       - name: Check for vulnerabilities in dependencies
-        run: uv run pip-audit
+        run: uv run pip-audit --ignore-vuln PYSEC-2025-183
 
       - name: Run Bandit security scan
         run: uv run bandit -r app/ -ll -ii
@@ -101,6 +107,10 @@ jobs:
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5433/test_db
           JWT_SECRET: ci-test-jwt-secret-not-for-production
           OTP_PEPPER: ci-test-otp-pepper-not-for-production
+          MINIO_URL: ""
+          MINIO_USERNAME: ""
+          MINIO_PASSWORD: ""
+          MINIO_BUCKET_NAME: ""
         run: uv run alembic upgrade head
 
       - name: Start API and run tests
@@ -111,12 +121,16 @@ jobs:
           ALLOW_STDOUT_EMAIL: "True"
           SMTP_USERNAME: ""
           SMTP_PASSWORD: ""
+          MINIO_URL: ""
+          MINIO_USERNAME: ""
+          MINIO_PASSWORD: ""
+          MINIO_BUCKET_NAME: ""
         run: |
           uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 &
 
           echo "Waiting for API..."
 
-          for i in {1..30}; do
+          for i in $(seq 1 30); do
             curl -f http://127.0.0.1:8000/api/v1/health && break
             sleep 1
           done

@@ -1,8 +1,10 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException
 
 from app.api.v1.router import api_router
@@ -13,22 +15,39 @@ from app.core.exceptions import (
 	unhandled_exception_handler,
 	validation_exception_handler,
 )
+from app.services.events import EventBus
+from app.services.websocket import ConnectionRegistry
 
 settings = get_settings()
 
-if not settings.RESEND_API_KEY and not settings.ALLOW_STDOUT_EMAIL:
-	import warnings
-
-	warnings.warn("Resend API key (RESEND_API_KEY) is not set and ALLOW_STDOUT_EMAIL is False. Emails will fail.")
-
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> None:  # noqa: ARG001
+async def lifespan(app: FastAPI):
 	configure_celery()
+
+	event_bus = EventBus(settings.CELERY_BROKER_URL)
+	try:
+		await event_bus.connect()
+	except Exception:
+		# Redis-backed eventing is optional for API startup in environments
+		# where Redis is not provisioned (e.g., some CI jobs).
+		pass
+	app.state.event_bus = event_bus
+
+	connection_registry = ConnectionRegistry()
+	app.state.connection_registry = connection_registry
+
 	yield
+
+	await event_bus.disconnect()
 
 
 app = FastAPI(title=settings.PROJECT_NAME, lifespan=lifespan)
+app.state.connection_registry = ConnectionRegistry()
+
+media_dir = Path(settings.MEDIA_DIR)
+media_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/media", StaticFiles(directory=media_dir), name="media")
 
 # CORS
 app.add_middleware(

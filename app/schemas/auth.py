@@ -1,5 +1,9 @@
+from datetime import datetime
+from uuid import UUID
+
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
+from app.models.auth_session import AuthSession
 from app.schemas.user import UserResponse
 
 
@@ -31,6 +35,8 @@ class LoginRequest(BaseModel):
 
 	email: EmailStr
 	password: str = Field(min_length=1, max_length=72)
+	device_id: str = Field(default="unknown", min_length=1, max_length=255)
+	platform: str | None = Field(default="web", max_length=32)
 
 
 class VerifyOtpRequest(BaseModel):
@@ -40,6 +46,9 @@ class VerifyOtpRequest(BaseModel):
 
 	email: EmailStr
 	code: str = Field(min_length=4, max_length=12)
+	guest_session_id: str | None = None
+	device_id: str = Field(default="unknown", min_length=1, max_length=255)
+	platform: str | None = Field(default="web", max_length=32)
 
 
 class ResendOtpRequest(BaseModel):
@@ -82,8 +91,37 @@ class ForgotPasswordRequest(BaseModel):
 
 
 class ResetPasswordRequest(BaseModel):
-	token: str = Field(min_length=16, max_length=512)
+	email: EmailStr
+	token: str = Field(min_length=6, max_length=512)
 	new_password: str = Field(min_length=8, max_length=72)
+
+
+class AuthSessionResponse(BaseModel):
+	"""A per-device authenticated session (refresh token not exposed)."""
+
+	id: UUID
+	device_id: str
+	platform: str | None = None
+	created_at: datetime
+	last_used_at: datetime | None = None
+	revoked: bool = False
+
+	model_config = ConfigDict(from_attributes=True)
+
+	@classmethod
+	def from_session(cls, row: AuthSession) -> "AuthSessionResponse":
+		platform: str | None = None
+		device_id = row.device_id
+		if ":" in device_id:
+			platform, _, device_id = device_id.partition(":")
+		return cls(
+			id=row.id,
+			device_id=device_id,
+			platform=platform,
+			created_at=row.created_at,
+			last_used_at=row.last_used_at,
+			revoked=row.revoked,
+		)
 
 
 class GoogleAuthData(BaseModel):
