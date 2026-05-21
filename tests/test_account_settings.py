@@ -76,6 +76,11 @@ def _auth_headers_with_token(user_id: uuid.UUID) -> tuple[dict[str, str], str]:
     return {"Authorization": f"Bearer {token}"}, payload["jti"]
 
 
+def _headers_with_refresh_cookie(headers: dict[str, str], refresh_token: str) -> dict[str, str]:
+    """Merge Authorization headers with a refresh_token Cookie header."""
+    return {**headers, "Cookie": f"refresh_token={refresh_token}"}
+
+
 # ---------------------------------------------------------------------------
 # PATCH /users/me — profile update
 # ---------------------------------------------------------------------------
@@ -244,8 +249,7 @@ async def test_update_password_blocklists_refresh_token(client) -> None:
         response = await client.patch(
             f"{API}/users/me/password",
             json={"current_password": "OldPassword1!", "new_password": "NewPassword2!"},
-            headers=headers,
-            cookies={"refresh_token": refresh_token},
+            headers=_headers_with_refresh_cookie(headers, refresh_token),
         )
         assert response.status_code == 200
         assert await _is_token_blocklisted(refresh_jti)
@@ -314,8 +318,7 @@ async def test_delete_account_blocklists_refresh_token(client) -> None:
 
     response = await client.delete(
         f"{API}/users/me",
-        headers=headers,
-        cookies={"refresh_token": refresh_token},
+        headers=_headers_with_refresh_cookie(headers, refresh_token),
     )
     assert response.status_code == 200
     assert await _is_token_blocklisted(refresh_jti)

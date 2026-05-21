@@ -104,8 +104,10 @@ async def update_password_endpoint(
 ) -> SuccessResponse:
 	"""Change the authenticated user's password.
 
-	Returns 400 if the current password does not match. Both the active access
-	token and refresh token are revoked so all existing sessions are invalidated.
+	Returns 400 if the current password does not match. Revokes all device
+	sessions (refresh tokens in auth_sessions) and blocklists the access token
+	on this request and the refresh cookie when provided. Other outstanding
+	access JWTs from other devices may remain valid until they expire.
 	"""
 	await update_password(
 		user_repo,

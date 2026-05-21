@@ -261,7 +261,7 @@ async def update_password(
 	"""Verify the current password then replace it with a new bcrypt hash.
 
 	Raises BadRequestError if the current password is wrong.
-	Revokes all device sessions and blocklists the current refresh/access JWTs.
+	Revokes all auth_sessions for the user and blocklists the presented JWTs.
 	"""
 	if not user.password_hash or not verify_password(current_password, user.password_hash):
 		raise BadRequestError("Incorrect password")
