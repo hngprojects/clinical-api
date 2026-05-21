@@ -25,8 +25,8 @@ from app.services.auth.tokens import (
 	decode_access_token,
 	decode_refresh_token,
 	revoke_refresh_token,
-	rotate_all_tokens,
 )
+from app.services.auth_sessions import AuthSessionManager
 
 __all__ = [
 	"signup_user",
@@ -49,5 +49,5 @@ __all__ = [
 	"decode_access_token",
 	"decode_refresh_token",
 	"revoke_refresh_token",
-	"rotate_all_tokens",
+	"AuthSessionManager",
 ]

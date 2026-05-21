@@ -14,6 +14,7 @@ from app.models.lab_result import LabResult, OCRStatus
 from app.models.medical_case import MedicalCase, MedicalCaseStatus
 from app.models.user import User, UserRole
 from app.services.auth.tokens import create_access_token
+from app.services.guest import create_guest_session
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -106,7 +107,7 @@ async def test_full_case_without_interpretation_returns_null(client, test_user, 
 	assert data["chats"] == []
 
 
-async def test_full_case_wrong_user_returns_403(client, test_user):
+async def test_full_case_wrong_user_returns_404(client, test_user):
 	case_id = await _seed_case_minimal(test_user, with_interp=False, with_chat=False)
 
 	other = User(
@@ -128,7 +129,7 @@ async def test_full_case_wrong_user_returns_403(client, test_user):
 		headers={"Authorization": f"Bearer {token}"},
 	)
 
-	assert resp.status_code == 403
+	assert resp.status_code == 404
 
 	async with AsyncSessionLocal() as session:
 		await session.delete(other)
@@ -136,7 +137,7 @@ async def test_full_case_wrong_user_returns_403(client, test_user):
 
 
 async def test_full_case_guest_session_allowed(client):
-	guest_session = f"guest-full-{uuid.uuid4().hex[:12]}"
+	guest_session = (await create_guest_session()).guest_session_id
 	case_id = uuid.uuid4()
 	lab_id = uuid.uuid4()
 	now = datetime.now(timezone.utc)
@@ -146,7 +147,7 @@ async def test_full_case_guest_session_allowed(client):
 			MedicalCase(
 				id=case_id,
 				user_id=None,
-				guest_session_id=guest_session,
+				guest_session_id=uuid.UUID(guest_session),
 				status=MedicalCaseStatus.PENDING,
 				created_at=now,
 			)

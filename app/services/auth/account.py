@@ -22,12 +22,8 @@ from app.services.auth.otp import (
 	create_otp_for_user,
 	verify_otp_for_user,
 )
-from app.services.auth.tokens import (
-	create_access_token,
-	create_refresh_token,
-	decode_access_token,
-	revoke_refresh_token,
-)
+from app.services.auth.tokens import decode_access_token, revoke_refresh_token
+from app.services.auth_sessions import AuthSessionManager
 
 
 async def signup_user(
@@ -85,8 +81,8 @@ async def authenticate_credentials(
 	*,
 	email: str,
 	password: str,
-) -> tuple[User, str, int, str]:
-	"""Verify email + password and return (user, access_token, ttl_seconds, refresh_token).
+) -> User:
+	"""Verify email + password and return the authenticated user.
 
 	Raises:
 		NotFoundError: if the email is not registered.
@@ -107,10 +103,7 @@ async def authenticate_credentials(
 	user.last_login_at = now
 	await user_repo.commit()
 	await user_repo.refresh(user)
-
-	token, ttl_seconds = create_access_token(user.id)
-	refresh_token = await create_refresh_token(user.id)
-	return user, token, ttl_seconds, refresh_token
+	return user
 
 
 async def authenticate_otp(
@@ -119,8 +112,8 @@ async def authenticate_otp(
 	*,
 	email: str,
 	code: str,
-) -> tuple[User, str, int, str]:
-	"""Verify an email-verification OTP and return (user, access_token, ttl_seconds, refresh_token).
+) -> User:
+	"""Verify an email-verification OTP and return the user.
 
 	Flips `is_email_verified=True` on success.
 	"""
@@ -142,10 +135,7 @@ async def authenticate_otp(
 
 	await user_repo.commit()
 	await user_repo.refresh(user)
-
-	token, ttl_seconds = create_access_token(user.id)
-	refresh_token = await create_refresh_token(user.id)
-	return user, token, ttl_seconds, refresh_token
+	return user
 
 
 async def resend_otp(
@@ -260,6 +250,7 @@ async def update_profile(
 async def update_password(
 	user_repo: UserRepository,
 	blocklist_repo: TokenBlocklistRepository,
+	auth_manager: AuthSessionManager,
 	*,
 	user: User,
 	current_password: str,
@@ -270,12 +261,12 @@ async def update_password(
 	"""Verify the current password then replace it with a new bcrypt hash.
 
 	Raises BadRequestError if the current password is wrong.
-	Revokes the refresh token first, then the access token, so all active
-	sessions are immediately invalidated after the password change.
+	Revokes all device sessions and blocklists the current refresh/access JWTs.
 	"""
 	if not user.password_hash or not verify_password(current_password, user.password_hash):
 		raise BadRequestError("Incorrect password")
 	user.password_hash = hash_password(new_password)
+	await auth_manager.revoke_all(user.id)
 	if refresh_token:
 		await revoke_refresh_token(refresh_token, blocklist_repo)
 	payload = decode_access_token(access_token)
@@ -287,21 +278,23 @@ async def update_password(
 async def delete_account(
 	user_repo: UserRepository,
 	blocklist_repo: TokenBlocklistRepository,
+	auth_manager: AuthSessionManager,
 	*,
 	user: User,
 	access_token: str,
 	refresh_token: str | None,
 ) -> None:
-	"""Revoke active tokens then permanently delete the user.
+	"""Blocklist active JWTs, revoke device sessions, then permanently delete the user.
 
-	Refresh token is revoked first (if present), then the access token, then
-	the user row is removed. The endpoint owns the commit so all three writes
-	land atomically.
+	Refresh token is blocklisted first (if present), then the access token.
+	The endpoint owns the commit so all writes land atomically.
 	"""
 	if refresh_token:
+		await auth_manager.revoke_by_refresh_token(refresh_token)
 		await revoke_refresh_token(refresh_token, blocklist_repo)
 	payload = decode_access_token(access_token)
 	jti: str = payload["jti"]
 	expires_at = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
 	await blocklist_repo.revoke(jti=jti, user_id=user.id, expires_at=expires_at)
+	await auth_manager.revoke_all(user.id)
 	await user_repo.delete(user)

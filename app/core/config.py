@@ -1,12 +1,20 @@
+import os
 from functools import lru_cache
 
 from pydantic import Field, PostgresDsn, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+APP_ENV = os.getenv("APP_ENV", "staging")
+
+ENV_FILES = {
+	"staging": ".env.staging",
+	"production": ".env.production",
+}
+
 
 class Settings(BaseSettings):
 	model_config = SettingsConfigDict(
-		env_file=".env",
+		env_file=ENV_FILES.get(APP_ENV, ".env.staging"),
 		env_file_encoding="utf-8",
 		case_sensitive=True,
 		extra="ignore",
@@ -37,9 +45,9 @@ class Settings(BaseSettings):
 	OTP_MAX_ATTEMPTS: int = 5
 	OTP_PEPPER: str = Field(min_length=32)
 
-	RESEND_API_KEY: str | None = None
-	RESEND_FROM_EMAIL: str = ""
-	RESEND_FROM_NAME: str = "Clinsights"
+	BREVO_API_KEY: str | None = Field(default=None)
+	BREVO_FROM_EMAIL: str = Field(default="")
+	BREVO_FROM_NAME: str = "Clinsights"
 
 	# SMTP (fallback email provider)
 	SMTP_HOST: str = ""
@@ -57,6 +65,23 @@ class Settings(BaseSettings):
 	CELERY_BROKER_URL: str = "redis://localhost:6379/0"
 	CELERY_RESULT_BACKEND: str | None = None
 
+	# Guest sessions (Postgres guest_sessions table)
+	GUEST_SESSION_TTL_SECONDS: int = 3600  # 1 hour
+	GUEST_CHAT_MESSAGE_LIMIT: int = 3
+	GUEST_UPLOAD_LIMIT: int = 1
+	GUEST_SESSION_RETENTION_DAYS: int = 7
+	GUEST_SESSION_CREATE_RATE_LIMIT: int = 30
+	GUEST_SESSION_CREATE_RATE_WINDOW_SECONDS: int = 3600
+	# When true, use X-Forwarded-For (first hop) for guest IP hashing; only enable behind a trusted proxy.
+	TRUST_PROXY_FORWARDED_IP: bool = False
+
+	# Auth sessions (Postgres auth_sessions table)
+	AUTH_SESSION_INACTIVITY_DAYS: int = 30
+	AUTH_SESSION_ABSOLUTE_DAYS: int = 90
+
+	# OAuth
+	OAUTH_STATE_EXPIRES_MINUTES: int = 10
+
 	AI_PROVIDER: str = "auto"
 
 	OPENAI_API_KEY: str = ""
@@ -68,6 +93,10 @@ class Settings(BaseSettings):
 	PIPELINE_TIMEOUT_SECONDS: int = 30
 
 	FRONTEND_URL: str = ""
+
+	MEDIA_DIR: str = "media"
+	RESEND_API_KEY: str | None = None
+	RESEND_FROM_EMAIL: str = ""
 
 	@field_validator("RESEND_FROM_EMAIL", mode="after")
 	@classmethod

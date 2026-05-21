@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Cookie, Depends, status
 from fastapi.security import HTTPAuthorizationCredentials
 
-from app.api.deps import CurrentUser, OtpRepo, TokenBlocklistRepo, UserRepo, bearer_scheme
+from app.api.deps import AuthSessionManagerDep, CurrentUser, OtpRepo, TokenBlocklistRepo, UserRepo, bearer_scheme
 from app.core.responses import SuccessResponse
 from app.models.otp import OtpPurpose
 from app.schemas.user import (
@@ -98,6 +98,7 @@ async def update_password_endpoint(
 	current_user: CurrentUser,
 	user_repo: UserRepo,
 	blocklist_repo: TokenBlocklistRepo,
+	auth_manager: AuthSessionManagerDep,
 	credentials: Annotated[HTTPAuthorizationCredentials, Depends(bearer_scheme)],
 	refresh_token: Annotated[str | None, Cookie()] = None,
 ) -> SuccessResponse:
@@ -109,6 +110,7 @@ async def update_password_endpoint(
 	await update_password(
 		user_repo,
 		blocklist_repo,
+		auth_manager,
 		user=current_user,
 		current_password=payload.current_password,
 		new_password=payload.new_password,
@@ -124,6 +126,7 @@ async def delete_account_endpoint(
 	current_user: CurrentUser,
 	user_repo: UserRepo,
 	blocklist_repo: TokenBlocklistRepo,
+	auth_manager: AuthSessionManagerDep,
 	credentials: Annotated[HTTPAuthorizationCredentials, Depends(bearer_scheme)],
 	refresh_token: Annotated[str | None, Cookie()] = None,
 ) -> SuccessResponse:
@@ -134,6 +137,7 @@ async def delete_account_endpoint(
 	await delete_account(
 		user_repo,
 		blocklist_repo,
+		auth_manager,
 		user=current_user,
 		access_token=credentials.credentials,
 		refresh_token=refresh_token,
