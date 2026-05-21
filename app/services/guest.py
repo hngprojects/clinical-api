@@ -35,6 +35,7 @@ class GuestSessionInfo:
 
 	guest_session_id: str
 	expires_in: int
+	expires_at: datetime
 
 
 def _expires_in(session) -> int:
@@ -43,7 +44,11 @@ def _expires_in(session) -> int:
 
 
 def session_info(session) -> GuestSessionInfo:
-	return GuestSessionInfo(guest_session_id=str(session.id), expires_in=_expires_in(session))
+	return GuestSessionInfo(
+		guest_session_id=str(session.id),
+		expires_in=_expires_in(session),
+		expires_at=session.expires_at,
+	)
 
 
 def _manager(db) -> GuestSessionManager:
