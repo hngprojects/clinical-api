@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 
 import pytest
 from httpx import AsyncClient
@@ -27,6 +28,8 @@ async def test_create_guest_session_returns_201(client: AsyncClient) -> None:
 	data = body["data"]
 	assert uuid.UUID(data["guest_session_id"])
 	assert 3590 <= data["expires_in"] <= 3600
+	expires_at = datetime.fromisoformat(data["expires_at"].replace("Z", "+00:00"))
+	assert expires_at > datetime.now(timezone.utc)
 
 
 async def test_session_me_valid_header_returns_200(client: AsyncClient) -> None:
@@ -38,6 +41,7 @@ async def test_session_me_valid_header_returns_200(client: AsyncClient) -> None:
 	data = response.json()["data"]
 	assert data["guest_session_id"] == info.guest_session_id
 	assert 3590 <= data["expires_in"] <= 3600
+	assert "expires_at" in data
 
 
 async def test_session_me_missing_header_returns_401(client: AsyncClient) -> None:
