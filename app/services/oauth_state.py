@@ -7,6 +7,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import jwt
 
@@ -20,6 +21,31 @@ class OAuthStatePayload:
 	device_id: str | None
 	platform: str | None
 	return_url: str | None
+
+
+def _is_allowed_return_url(candidate: str, frontend_callback_url: str) -> bool:
+	parsed_candidate = urlparse(candidate)
+	if parsed_candidate.scheme == "clinsight" and parsed_candidate.netloc == "auth" and parsed_candidate.path == "/google":
+		return True
+
+	parsed_frontend = urlparse(frontend_callback_url)
+	return (
+		parsed_candidate.scheme == parsed_frontend.scheme
+		and parsed_candidate.netloc == parsed_frontend.netloc
+		and parsed_candidate.path == parsed_frontend.path
+	)
+
+
+def _normalize_return_url(candidate: str) -> str:
+	parsed_candidate = urlparse(candidate)
+	return urlunparse(parsed_candidate._replace(query="", fragment=""))
+
+
+def build_redirect_url(base_redirect: str, access_token: str) -> str:
+	parsed_redirect = urlparse(base_redirect)
+	query_params = dict(parse_qsl(parsed_redirect.query, keep_blank_values=True))
+	query_params["access_token"] = access_token
+	return urlunparse(parsed_redirect._replace(query=urlencode(query_params)))
 
 
 def create_oauth_state(
@@ -51,7 +77,9 @@ def create_oauth_state(
 	if platform and platform.strip():
 		payload["platform"] = platform.strip()[:32]
 	if return_url and return_url.strip():
-		payload["return_url"] = return_url.strip()[:500]
+		candidate = return_url.strip()[:500]
+		if _is_allowed_return_url(candidate, settings.FRONTEND_AUTH_CALLBACK_URL):
+			payload["return_url"] = _normalize_return_url(candidate)
 
 	return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
 
