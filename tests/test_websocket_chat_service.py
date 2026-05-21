@@ -1,7 +1,7 @@
 """
 Unit tests for app/services/websocket_chat.py
 
-These tests cover pure logic only — token counting, history trimming,
+These tests cover pure logic only - token counting, history trimming,
 message serialisation. No database or network calls needed.
 All DB-dependent functions (save_user_message, save_ai_message) are
 tested with mocked repositories.
@@ -25,7 +25,7 @@ from app.services.websocket_chat import (
 )
 
 
-# ── Helpers ─────────────────────────────────────────────────────────────
+# --- Helpers ---
 
 def make_chat(text: str, sender: SenderType = SenderType.PATIENT) -> Chat:
     """Create a Chat object without touching the database."""
@@ -39,7 +39,7 @@ def make_chat(text: str, sender: SenderType = SenderType.PATIENT) -> Chat:
     )
 
 
-# ── chat_to_wire ───────────────────────────────────────────────────────────�
+# --- chat_to_wire ---
 
 class TestChatToWire:
     def test_patient_message_serialises_correctly(self):
@@ -74,7 +74,7 @@ class TestChatToWire:
         datetime.fromisoformat(result["sent_at"])
 
 
-# ── _estimate_tokens ──────────────────────────────────────────────────────────
+# --- _estimate_tokens ---
 
 class TestEstimateTokens:
     def test_empty_string_returns_one(self):
@@ -93,7 +93,7 @@ class TestEstimateTokens:
         assert _estimate_tokens("any text at all") > 0
 
 
-# ── trim_history ───────────────────────────────────────────────────────────�
+# --- trim_history ---
 
 class TestTrimHistory:
     def test_short_history_not_trimmed(self):
@@ -101,7 +101,7 @@ class TestTrimHistory:
         system_prompt = "You are a helpful assistant."
         result = trim_history(history, system_prompt, "new message")
 
-        # Short history easily fits in 3000 tokens — nothing trimmed
+        # Short history easily fits in 3000 tokens - nothing trimmed
         assert len(result) == 2
 
     def test_empty_history_returns_empty(self):
@@ -117,7 +117,7 @@ class TestTrimHistory:
         system_prompt = "You are a helpful assistant."
         result = trim_history(history, system_prompt, "new question")
 
-        # Should be trimmed — fewer than 100 messages remain
+        # Should be trimmed - fewer than 100 messages remain
         assert len(result) < 100
         # But never below 2 (our hard floor)
         assert len(result) >= 2
@@ -148,7 +148,7 @@ class TestTrimHistory:
             assert result[-1].content["text"] == "message 19"
 
 
-# ── save_user_message ─────────────────────────────────────────────────────────�
+# --- save_user_message ---
 
 class TestSaveUserMessage:
     async def test_saves_with_correct_fields(self):
@@ -183,7 +183,7 @@ class TestSaveUserMessage:
         mock_repo.refresh.assert_awaited_once()
 
 
-# ── save_ai_message ──────────────────────────────────────────────────────────�
+# --- save_ai_message ---
 
 class TestSaveAiMessage:
     async def test_saves_with_correct_fields(self):
@@ -215,7 +215,7 @@ class TestSaveAiMessage:
         mock_repo.refresh.assert_awaited_once()
 
 
-# ── generate_ai_response ───────────────────────────────────────────────────────
+# --- generate_ai_response ---
 
 class TestGenerateAiResponse:
     async def test_streams_tokens_from_llm(self):
