@@ -58,7 +58,7 @@ from app.services.oauth import (
 	get_or_create_google_user,
 )
 from app.services.oauth_state import build_redirect_url, create_oauth_state, decode_oauth_state
-from app.tasks.emails import send_otp_email_task, send_password_reset_email_task
+from app.tasks.emails import send_otp_email_task
 
 logger = logging.getLogger(__name__)
 
