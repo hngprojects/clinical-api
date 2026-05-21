@@ -191,7 +191,9 @@ def generate_pdf(
 	# ── AI Summary ───────────────────────────────────────────────────────────
 	story.append(Paragraph("AI Summary", styles["section"]))
 	story.append(
-		Paragraph(escape(interpretation.summary) if interpretation.summary else "No AI summary available.", styles["body"])
+		Paragraph(
+			escape(interpretation.summary) if interpretation.summary else "No AI summary available.", styles["body"]
+		)
 	)
 	story.append(Spacer(1, 4 * mm))
 
@@ -199,7 +201,6 @@ def generate_pdf(
 	story.append(Paragraph("Lab Results Breakdown", styles["section"]))
 	value_breakdown = _as_value_breakdown_items(interpretation.value_breakdown)
 	if value_breakdown:
-
 		headers = ["Metric", "Value", "Unit", "Status"]
 		rows = [headers]
 		for item in value_breakdown:
