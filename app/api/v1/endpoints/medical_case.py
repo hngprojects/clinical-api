@@ -9,6 +9,7 @@ from app.api.deps import (
 	GuestSessionManagerDep,
 	LabResultRepo,
 	MedicalCaseRepo,
+	PipelineAuditLogRepo,
 	SessionContextDep,
 )
 from app.core.responses import SuccessResponse
@@ -16,6 +17,7 @@ from app.schemas.ai_interpretation import AIInterpretationResponse
 from app.schemas.chat import ChatResponse
 from app.schemas.lab_result import LabResultResponse
 from app.schemas.medical_case import MedicalCaseDetailResponse, MedicalCaseResponse
+from app.schemas.pipeline_audit_log import PipelineAuditLogResponse
 from app.services.medical_case import (
 	complete_case,
 	create_case_for_user,
@@ -88,7 +90,7 @@ async def retrieve_full(
 		chat_repo,
 		case_id,
 		user=ctx.user,
-		guest_session=ctx.guest_session,
+		guest_session_id=ctx.guest_session_id,
 		manager=manager,
 	)
 	return SuccessResponse(
@@ -119,7 +121,7 @@ async def retrieve(
 		case_repo,
 		case_id,
 		user=ctx.user,
-		guest_session=ctx.guest_session,
+		guest_session_id=ctx.guest_session_id,
 		manager=manager,
 	)
 	return SuccessResponse(
@@ -143,3 +145,25 @@ async def mark_complete(
 		message="Case marked as complete.",
 		data=MedicalCaseResponse.model_validate(case),
 	)
+
+
+@router.get(
+	"/{case_id}/pipeline-log",
+	response_model=SuccessResponse[list[PipelineAuditLogResponse]],
+)
+async def pipeline_log(
+	case_id: UUID,
+	current_user: CurrentUser,
+	case_repo: MedicalCaseRepo,
+	lab_repo: LabResultRepo,
+	audit_repo: PipelineAuditLogRepo,
+) -> SuccessResponse[list[PipelineAuditLogResponse]]:
+	"""Return pipeline audit log entries for all lab results in a case."""
+	case = await get_case(case_repo, case_id, user=current_user)
+	lab_results = await lab_repo.list_by_case(case.id)
+	entries: list[PipelineAuditLogResponse] = []
+	for lr in lab_results:
+		logs = await audit_repo.list_by_lab_result(lr.id)
+		entries.extend(PipelineAuditLogResponse.model_validate(log) for log in logs)
+	entries.sort(key=lambda e: e.created_at)
+	return SuccessResponse(message="OK", data=entries)

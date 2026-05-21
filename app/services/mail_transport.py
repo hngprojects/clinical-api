@@ -22,33 +22,33 @@ class BaseMailTransport(ABC):
 		raise NotImplementedError()
 
 
-class ResendTransport(BaseMailTransport):
+class BrevoTransport(BaseMailTransport):
 	def __init__(self, api_key: str, from_email: str, from_name: str | None = None) -> None:
 		self.api_key = api_key
 		self.from_email = from_email
 		self.from_name = from_name or ""
-		self.base_url = "https://api.resend.com"
+		self.base_url = "https://api.brevo.com"
 
 	async def send(self, subject: str, html: str, to: str, from_email: str | None = None) -> dict:
 		payload = {
-			"from": f"{self.from_name} <{from_email or self.from_email}>",
-			"to": [to],
+			"sender": {"name": self.from_name, "email": from_email or self.from_email},
+			"to": [{"email": to}],
 			"subject": subject,
-			"html": html,
+			"htmlContent": html,
 		}
 
-		headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+		headers = {"api-key": self.api_key, "Content-Type": "application/json"}
 
 		async with httpx.AsyncClient(timeout=10) as client:
 			try:
-				resp = await client.post(f"{self.base_url}/emails", json=payload, headers=headers)
-			except Exception as exc:  # network / transport
-				logger.exception("Resend request failed for %s", to)
-				raise EmailError("Resend provider request failed") from exc
+				resp = await client.post(f"{self.base_url}/v3/smtp/email", json=payload, headers=headers)
+			except Exception as exc:
+				logger.exception("Brevo request failed for %s", to)
+				raise EmailError("Brevo provider request failed") from exc
 
 		if resp.status_code >= 400:
-			logger.warning("Resend returned status %s: %s", resp.status_code, resp.text)
-			raise EmailError(f"Resend provider error: {resp.status_code} {resp.text}")
+			logger.warning("Brevo returned status %s: %s", resp.status_code, resp.text)
+			raise EmailError(f"Brevo provider error: {resp.status_code} {resp.text}")
 
 		return resp.json()
 
@@ -104,13 +104,13 @@ class SMTPTransport(BaseMailTransport):
 			raise EmailError("SMTP provider failed") from exc
 
 
-def _build_resend_transport() -> ResendTransport | None:
+def _build_brevo_transport() -> BrevoTransport | None:
 	settings = get_settings()
-	key = settings.RESEND_API_KEY
-	from_email = settings.RESEND_FROM_EMAIL
-	from_name = settings.RESEND_FROM_NAME
+	key = settings.BREVO_API_KEY
+	from_email = settings.BREVO_FROM_EMAIL
+	from_name = settings.BREVO_FROM_NAME
 	if key and from_email:
-		return ResendTransport(api_key=key, from_email=from_email, from_name=from_name)
+		return BrevoTransport(api_key=key, from_email=from_email, from_name=from_name)
 	return None
 
 
@@ -123,8 +123,8 @@ def _build_smtp_transport() -> SMTPTransport | None:
 	username = settings.SMTP_USERNAME
 	password = settings.SMTP_PASSWORD
 	use_tls = settings.SMTP_USE_TLS
-	from_email = settings.SMTP_FROM_EMAIL or settings.RESEND_FROM_EMAIL
-	from_name = settings.SMTP_FROM_NAME or settings.RESEND_FROM_NAME
+	from_email = settings.SMTP_FROM_EMAIL or settings.BREVO_FROM_EMAIL
+	from_name = settings.SMTP_FROM_NAME or settings.BREVO_FROM_NAME
 	try:
 		port_int = int(port)
 	except Exception:
@@ -148,21 +148,25 @@ async def send_with_fallback(subject: str, html: str, to: str) -> dict:
 		logger.info("[EMAIL-STDOUT] To: %s Subject: %s", to, subject)
 		return {"provider": "stdout"}
 
-	resend = _build_resend_transport()
+	brevo = _build_brevo_transport()
 	smtp = _build_smtp_transport()
 
-	if resend:
+	error_message = "No email providers configured"
+
+	if brevo:
 		try:
-			return {"provider": "resend", "result": await resend.send(subject=subject, html=html, to=to)}
+			return {"provider": "brevo", "result": await brevo.send(subject=subject, html=html, to=to)}
 		except EmailError as exc:
-			logger.warning("Resend failed, will attempt SMTP fallback: %s", exc)
-			# fall through to smtp
+			error_message = exc.detail
+			logger.warning("Brevo failed, will attempt next provider: %s", exc)
+			# fall through to next provider
 
 	if smtp:
 		try:
 			return {"provider": "smtp", "result": await smtp.send(subject=subject, html=html, to=to)}
-		except EmailError:
+		except EmailError as exc:
+			error_message = exc.detail
 			logger.exception("SMTP fallback also failed")
 			raise
 
-	raise EmailError("No email providers configured")
+	raise EmailError(error_message)

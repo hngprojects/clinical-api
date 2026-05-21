@@ -61,3 +61,17 @@ class ChatRepository(BaseRepository[Chat]):
 			select(Chat).where(Chat.user_id == user_id).order_by(Chat.sent_at.desc()).offset(offset).limit(limit)
 		)
 		return list(result.scalars().all())
+
+	async def get_recent_for_case(
+		self,
+		medical_case_id: UUID,
+		*,
+		limit: int = 50,
+	) -> list[Chat]:
+		"""Fetch the most recent `limit` messages in chronological order."""
+		result = await self._session.execute(
+			select(Chat).where(Chat.medical_case_id == medical_case_id).order_by(Chat.sent_at.desc()).limit(limit)
+		)
+		chats = list(result.scalars().all())
+		chats.reverse()
+		return chats

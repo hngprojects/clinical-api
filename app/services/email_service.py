@@ -31,7 +31,7 @@ def _validate_url(url: str | None) -> str:
 		return ""
 	try:
 		parsed = urlparse(url)
-		if parsed.scheme not in ("http", "https"):
+		if parsed.scheme not in ("http", "https", "clinsight"):
 			logger.warning("Invalid URL scheme: %s", parsed.scheme)
 			return ""
 		return url

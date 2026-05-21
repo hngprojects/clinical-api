@@ -2,15 +2,15 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from app.core.exceptions import ForbiddenError, NotFoundError
+from app.core.exceptions import ForbiddenError, NotFoundError, UnauthorizedError
 from app.models.guest_session import GuestSession
 from app.models.lab_result import LabResult, OCRStatus
 from app.models.medical_case import MedicalCase, MedicalCaseStatus
 from app.models.user import User
 from app.repositories.lab_result import LabResultRepository
 from app.repositories.medical_case import MedicalCaseRepository
+from app.repositories.medical_upload import MedicalUploadRepository
 from app.schemas.lab_result import LabResultCreate, LabResultUpdate, UploadRequest
-from app.services.guest import resolve_guest_session_id
 from app.services.guest_sessions import GuestSessionManager, GuestUsageAction
 
 
@@ -20,7 +20,6 @@ async def upload_lab_result(
 	payload: UploadRequest,
 	user: User | None,
 	*,
-	header_guest_session_id: str | None = None,
 	guest_session: GuestSession | None = None,
 	manager: GuestSessionManager | None = None,
 ) -> tuple[MedicalCase, LabResult]:
@@ -31,18 +30,13 @@ async def upload_lab_result(
 	"""
 	from app.tasks.pipeline import run_lab_result_pipeline
 
-	if user is not None and (header_guest_session_id or payload.guest_session_id):
-		raise ForbiddenError("You cannot upload as a guest while authenticated.")
-
 	guest_session_uuid: UUID | None = None
 	if user is None:
+		if guest_session is None:
+			raise UnauthorizedError("Authentication or a valid guest session is required.")
 		if manager is None:
 			raise ForbiddenError("Guest uploads require a session manager.")
-		if guest_session is not None:
-			guest_session_uuid = guest_session.id
-		else:
-			raw_guest = payload.guest_session_id or header_guest_session_id
-			guest_session_uuid = await resolve_guest_session_id(raw_guest, manager=manager)
+		guest_session_uuid = guest_session.id
 		await manager.can_use(guest_session_uuid, GuestUsageAction.UPLOAD)
 
 	# Create the case
@@ -69,6 +63,54 @@ async def upload_lab_result(
 	await lab_repo.refresh(lab_result)
 
 	# Fire the pipeline
+	run_lab_result_pipeline.delay(str(lab_result.id))
+
+	return case, lab_result
+
+
+async def handle_file_upload(
+	lab_repo: LabResultRepository,
+	case_repo: MedicalCaseRepository,
+	upload_repo: MedicalUploadRepository,
+	file: bytes,
+	filename: str,
+	content_type: str,
+	user: User | None,
+	guest_session_id: str | None,
+	public_url_base: str,
+) -> tuple[MedicalCase, LabResult]:
+	"""Create a MedicalCase + LabResult for a file upload and enqueue the pipeline."""
+	from app.services.storage import upload_medical_file
+	from app.tasks.pipeline import run_lab_result_pipeline
+
+	case = MedicalCase(
+		user_id=user.id if user else None,
+		guest_session_id=guest_session_id,
+		status=MedicalCaseStatus.PENDING,
+	)
+	case_repo.add(case)
+	await case_repo.commit()
+	await case_repo.refresh(case)
+
+	# Persist the file and record metadata.
+	file_metadata = await upload_medical_file(
+		upload_repo,
+		file,
+		filename,
+		content_type,
+		case.id,
+		public_url_base,
+	)
+
+	lab_result = LabResult(
+		medical_case_id=case.id,
+		file={"name": file_metadata["filename"], "url": file_metadata["file_url"]},
+		ocr_status=OCRStatus.PENDING,
+	)
+	lab_repo.add(lab_result)
+	await lab_repo.commit()
+	await lab_repo.refresh(lab_result)
+
 	run_lab_result_pipeline.delay(str(lab_result.id))
 
 	return case, lab_result

@@ -31,7 +31,7 @@ async def create_message(
 		case_repo,
 		payload,
 		user=ctx.user,
-		guest_session=ctx.guest_session,
+		guest_session_id=ctx.guest_session_id,
 		manager=manager,
 	)
 	return SuccessResponse(
@@ -58,7 +58,7 @@ async def list_messages(
 		case_repo,
 		case_id,
 		user=ctx.user,
-		guest_session=ctx.guest_session,
+		guest_session_id=ctx.guest_session_id,
 		manager=manager,
 	)
 	messages = await list_messages_for_case(chat_repo, case_id, offset=offset, limit=limit)

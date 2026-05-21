@@ -2,11 +2,11 @@ from uuid import UUID
 
 from app.core.exceptions import NotFoundError, UnauthorizedError
 from app.models.chat import Chat, SenderType
-from app.models.guest_session import GuestSession
 from app.models.user import User
 from app.repositories.chat import ChatRepository
 from app.repositories.medical_case import MedicalCaseRepository
 from app.schemas.chat import ChatCreate
+from app.services.guest import to_guest_session_uuid
 from app.services.guest_sessions import GuestSessionManager, GuestUsageAction
 from app.services.medical_case import get_case
 
@@ -17,7 +17,7 @@ async def send_message(
 	payload: ChatCreate,
 	*,
 	user: User | None = None,
-	guest_session: GuestSession | None = None,
+	guest_session_id: str | None = None,
 	manager: GuestSessionManager | None = None,
 ) -> Chat:
 	"""Create a new chat message within a medical case."""
@@ -25,17 +25,17 @@ async def send_message(
 		case_repo,
 		payload.medical_case_id,
 		user=user,
-		guest_session=guest_session,
+		guest_session_id=guest_session_id,
 		manager=manager,
 	)
 
 	if user is None and payload.sender_type == SenderType.PATIENT:
-		if guest_session is None or manager is None:
+		if not guest_session_id or manager is None:
 			raise UnauthorizedError("Missing guest session.")
-		await manager.can_use(guest_session.id, GuestUsageAction.CHAT)
+		await manager.can_use(to_guest_session_uuid(guest_session_id), GuestUsageAction.CHAT)
 
 	message = Chat(
-		user_id=payload.user_id or (user.id if user else None),
+		user_id=user.id if user else None,
 		medical_case_id=payload.medical_case_id,
 		sender_type=payload.sender_type,
 		content=payload.content,
@@ -44,8 +44,8 @@ async def send_message(
 	await chat_repo.commit()
 	await chat_repo.refresh(message)
 
-	if user is None and payload.sender_type == SenderType.PATIENT and manager is not None and guest_session is not None:
-		await manager.increment_chat(guest_session.id)
+	if user is None and payload.sender_type == SenderType.PATIENT and manager is not None and guest_session_id:
+		await manager.increment_chat(to_guest_session_uuid(guest_session_id))
 
 	return message
 

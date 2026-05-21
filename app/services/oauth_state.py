@@ -7,6 +7,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import jwt
 
@@ -19,6 +20,36 @@ class OAuthStatePayload:
 	guest_session_id: str | None
 	device_id: str | None
 	platform: str | None
+	return_url: str | None
+
+
+def _is_allowed_return_url(candidate: str, frontend_callback_url: str) -> bool:
+	parsed_candidate = urlparse(candidate)
+	if (
+		parsed_candidate.scheme == "clinsight"
+		and parsed_candidate.netloc == "auth"
+		and parsed_candidate.path == "/google"
+	):
+		return True
+
+	parsed_frontend = urlparse(frontend_callback_url)
+	return (
+		parsed_candidate.scheme == parsed_frontend.scheme
+		and parsed_candidate.netloc == parsed_frontend.netloc
+		and parsed_candidate.path == parsed_frontend.path
+	)
+
+
+def _normalize_return_url(candidate: str) -> str:
+	parsed_candidate = urlparse(candidate)
+	return urlunparse(parsed_candidate._replace(query="", fragment=""))
+
+
+def build_redirect_url(base_redirect: str, access_token: str) -> str:
+	parsed_redirect = urlparse(base_redirect)
+	query_params = dict(parse_qsl(parsed_redirect.query, keep_blank_values=True))
+	query_params["access_token"] = access_token
+	return urlunparse(parsed_redirect._replace(query=urlencode(query_params)))
 
 
 def create_oauth_state(
@@ -26,6 +57,7 @@ def create_oauth_state(
 	guest_session_id: str | None = None,
 	device_id: str | None = None,
 	platform: str | None = None,
+	return_url: str | None = None,
 ) -> str:
 	"""Build a short-lived signed state value for the OAuth redirect."""
 	settings = get_settings()
@@ -48,6 +80,10 @@ def create_oauth_state(
 		payload["device"] = device_id.strip()[:255]
 	if platform and platform.strip():
 		payload["platform"] = platform.strip()[:32]
+	if return_url and return_url.strip():
+		candidate = return_url.strip()[:500]
+		if _is_allowed_return_url(candidate, settings.FRONTEND_AUTH_CALLBACK_URL):
+			payload["return_url"] = _normalize_return_url(candidate)
 
 	return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
 
@@ -55,7 +91,7 @@ def create_oauth_state(
 def decode_oauth_state(state: str) -> OAuthStatePayload | None:
 	"""Verify OAuth state and return embedded guest session / device metadata."""
 	if not state or not state.strip():
-		return OAuthStatePayload(guest_session_id=None, device_id=None, platform=None)
+		return OAuthStatePayload(guest_session_id=None, device_id=None, platform=None, return_url=None)
 
 	settings = get_settings()
 	try:
@@ -85,4 +121,12 @@ def decode_oauth_state(state: str) -> OAuthStatePayload | None:
 	platform_raw = payload.get("platform")
 	platform = str(platform_raw).strip()[:32] if platform_raw else None
 
-	return OAuthStatePayload(guest_session_id=guest_id, device_id=device_id, platform=platform)
+	return_url_raw = payload.get("return_url")
+	return_url = str(return_url_raw).strip()[:500] if return_url_raw else None
+
+	return OAuthStatePayload(
+		guest_session_id=guest_id,
+		device_id=device_id,
+		platform=platform,
+		return_url=return_url,
+	)
