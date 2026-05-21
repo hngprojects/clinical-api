@@ -17,7 +17,6 @@ from app.api.deps import (
 	GuestSessionId,
 	MedicalCaseRepo,
 	OtpRepo,
-	PasswordResetRepo,
 	TokenBlocklistRepo,
 	UserRepo,
 	bearer_scheme,
@@ -27,6 +26,7 @@ from app.core.exceptions import UnauthorizedError
 from app.core.responses import SuccessResponse
 from app.core.rate_limit import enforce_rate_limit
 from app.core.security import hash_opaque_token
+from app.core.security import hash_opaque_token, hash_password
 from app.models.otp import OtpPurpose
 from app.schemas.auth import (
 	AuthSessionResponse,
@@ -43,14 +43,14 @@ from app.schemas.user import UserResponse
 from app.services.auth import (
 	authenticate_credentials,
 	authenticate_otp,
-	create_password_reset,
+	create_otp_for_user,
 	decode_access_token,
 	decode_refresh_token,
 	otp_ttl_seconds,
 	resend_otp,
-	reset_password,
 	revoke_refresh_token,
 	signup_user,
+	verify_otp_for_user,
 )
 from app.services.auth.blocklist import is_token_revoked, revoke_token
 from app.services.guest import migrate_guest_session_to_user
@@ -59,8 +59,8 @@ from app.services.oauth import (
 	fetch_google_user_info,
 	get_or_create_google_user,
 )
-from app.services.oauth_state import create_oauth_state, decode_oauth_state
-from app.tasks.emails import send_otp_email_task, send_password_reset_email_task
+from app.services.oauth_state import build_redirect_url, create_oauth_state, decode_oauth_state
+from app.tasks.emails import send_otp_email_task
 
 logger = logging.getLogger(__name__)
 
@@ -272,24 +272,23 @@ async def me(current_user: CurrentUser) -> SuccessResponse[UserResponse]:
 async def forgot_password(
 	request: ForgotPasswordRequest,
 	user_repo: UserRepo,
-	reset_repo: PasswordResetRepo,
+	otp_repo: OtpRepo,
 	session: DBSession,
 ) -> SuccessResponse:
-	"""Send a password-reset email.
+	"""Send an OTP to the user's email to allow password reset.
 
 	Always returns 200 regardless of whether the email is registered to prevent
 	user-enumeration attacks.
 	"""
 	user = await user_repo.get_by_email(request.email.strip().lower())
 	if user:
-		raw = await create_password_reset(reset_repo, user)
+		_, code = await create_otp_for_user(otp_repo, user_id=user.id, purpose=OtpPurpose.RESET_PASSWORD)
 		await session.commit()
 		try:
-			reset_url = f"clinsight://new-password?token={raw}"
-			send_password_reset_email_task.delay(user.email, raw, reset_url)
+			send_otp_email_task.delay(to_email=user.email, code=code, purpose=OtpPurpose.RESET_PASSWORD.value)
 		except Exception:
-			logger.exception("Failed to enqueue password reset email for %s", _mask_email(user.email))
-	return SuccessResponse(message="If this email is registered, you'll receive a reset link shortly.")
+			logger.exception("Failed to enqueue password reset OTP for %s", _mask_email(user.email))
+	return SuccessResponse(message="If this email is registered, you'll receive a reset code shortly.")
 
 
 @router.post(
@@ -298,13 +297,22 @@ async def forgot_password(
 )
 async def password_reset(
 	request: ResetPasswordRequest,
-	reset_repo: PasswordResetRepo,
 	user_repo: UserRepo,
-	session: DBSession,
+	otp_repo: OtpRepo,
 ) -> SuccessResponse:
-	"""Reset password using the token from the reset email."""
-	await reset_password(reset_repo, user_repo, request.token, request.new_password)
-	await session.commit()
+	"""Reset password using an OTP sent to the user's email."""
+	user = await user_repo.get_by_email(request.email.strip().lower())
+	if not user:
+		raise UnauthorizedError("Invalid or expired reset OTP")
+
+	try:
+		await verify_otp_for_user(otp_repo, user_id=user.id, purpose=OtpPurpose.RESET_PASSWORD, code=request.token)
+	except Exception:
+		await user_repo.commit()
+		raise UnauthorizedError("Invalid or expired reset OTP")
+
+	user.password_hash = hash_password(request.new_password)
+	await user_repo.commit()
 	return SuccessResponse(message="Password reset successfully.")
 
 
@@ -349,6 +357,7 @@ async def google_login(
 	guest_session_id: str | None = Query(None, description="Guest session to migrate after OAuth"),
 	device_id: str | None = Query(None, description="Client device identifier for per-device auth session"),
 	platform: str | None = Query("web", description="Client platform (web, ios, android)"),
+	return_url: str | None = Query(None, description="Mobile deep link to redirect after auth"),
 ) -> RedirectResponse:
 	"""Redirect to Google's OAuth consent screen."""
 	settings = get_settings()
@@ -356,6 +365,7 @@ async def google_login(
 		guest_session_id=guest_session_id,
 		device_id=device_id,
 		platform=platform,
+		return_url=return_url,
 	)
 	query_params = urlencode(
 		{
@@ -422,7 +432,8 @@ async def google_callback(
 	app_access_token = issue.access_token
 
 	settings = get_settings()
-	redirect_url = f"{settings.FRONTEND_AUTH_CALLBACK_URL}?{urlencode({'access_token': app_access_token})}"
+	base_redirect = oauth_ctx.return_url if oauth_ctx and oauth_ctx.return_url else settings.FRONTEND_AUTH_CALLBACK_URL
+	redirect_url = build_redirect_url(base_redirect, app_access_token)
 	return RedirectResponse(url=redirect_url)
 
 

@@ -31,14 +31,14 @@ router = APIRouter(tags=["lab-results"])
 async def upload(
 	payload: UploadRequest,
 	ctx: SessionContextDep,
+	manager: GuestSessionManagerDep,
 	lab_repo: LabResultRepo,
 	case_repo: MedicalCaseRepo,
-	manager: GuestSessionManagerDep,
 ) -> SuccessResponse[UploadResponse]:
 	"""Upload a lab result (JSON body with file URL).
 
 	Creates a MedicalCase and a LabResult in one action, then triggers
-	the OCR → AI pipeline. The upload is authenticated by user or guest session.
+	the OCR -> AI pipeline. The upload is authenticated by user or guest session.
 	"""
 	if ctx.user is not None and payload.guest_session_id:
 		raise ForbiddenError("You cannot use a guest session while authenticated.")

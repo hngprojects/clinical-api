@@ -28,10 +28,7 @@ async def create_guest_session_route(
 	info = session_info(session)
 	return SuccessResponse(
 		message="Guest session ready.",
-		data=GuestSessionResponse(
-			guest_session_id=info.guest_session_id,
-			expires_in=info.expires_in,
-		),
+		data=GuestSessionResponse.model_validate(info),
 	)
 
 
@@ -63,8 +60,5 @@ async def guest_session_me(
 
 	return SuccessResponse(
 		message="OK",
-		data=GuestSessionResponse(
-			guest_session_id=info.guest_session_id,
-			expires_in=info.expires_in,
-		),
+		data=GuestSessionResponse.model_validate(info),
 	)

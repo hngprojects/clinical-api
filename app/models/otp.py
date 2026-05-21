@@ -18,6 +18,8 @@ class OtpPurpose(str, enum.Enum):
 
 	EMAIL_VERIFICATION = "email_verification"
 
+	RESET_PASSWORD = "reset_password"
+
 
 class OtpCode(Base):
 	"""A single-use, time-bound OTP code tied to a user.
