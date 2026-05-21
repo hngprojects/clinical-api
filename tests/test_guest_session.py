@@ -26,6 +26,7 @@ async def test_create_guest_session_persists_row() -> None:
 
 	assert uuid.UUID(info.guest_session_id)
 	assert 3590 <= info.expires_in <= 3600
+	assert info.expires_at.tzinfo is not None
 
 	async with AsyncSessionLocal() as db:
 		row = await GuestSessionRepository(db).get_by_id(uuid.UUID(info.guest_session_id))
@@ -73,6 +74,7 @@ async def test_get_guest_session_returns_ttl() -> None:
 	assert session is not None
 	assert session.guest_session_id == info.guest_session_id
 	assert 3590 <= session.expires_in <= 3600
+	assert session.expires_at == info.expires_at
 
 
 async def test_get_guest_session_none_when_missing() -> None:

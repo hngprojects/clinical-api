@@ -57,7 +57,7 @@ from app.services.oauth import (
 	fetch_google_user_info,
 	get_or_create_google_user,
 )
-from app.services.oauth_state import create_oauth_state, decode_oauth_state
+from app.services.oauth_state import build_redirect_url, create_oauth_state, decode_oauth_state
 from app.tasks.emails import send_otp_email_task
 
 logger = logging.getLogger(__name__)
@@ -348,6 +348,7 @@ async def google_login(
 	guest_session_id: str | None = Query(None, description="Guest session to migrate after OAuth"),
 	device_id: str | None = Query(None, description="Client device identifier for per-device auth session"),
 	platform: str | None = Query("web", description="Client platform (web, ios, android)"),
+	return_url: str | None = Query(None, description="Mobile deep link to redirect after auth"),
 ) -> RedirectResponse:
 	"""Redirect to Google's OAuth consent screen."""
 	settings = get_settings()
@@ -355,6 +356,7 @@ async def google_login(
 		guest_session_id=guest_session_id,
 		device_id=device_id,
 		platform=platform,
+		return_url=return_url,
 	)
 	query_params = urlencode(
 		{
@@ -421,7 +423,8 @@ async def google_callback(
 	app_access_token = issue.access_token
 
 	settings = get_settings()
-	redirect_url = f"{settings.FRONTEND_AUTH_CALLBACK_URL}?{urlencode({'access_token': app_access_token})}"
+	base_redirect = oauth_ctx.return_url if oauth_ctx and oauth_ctx.return_url else settings.FRONTEND_AUTH_CALLBACK_URL
+	redirect_url = build_redirect_url(base_redirect, app_access_token)
 	return RedirectResponse(url=redirect_url)
 
 
