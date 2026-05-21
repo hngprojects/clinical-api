@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 from app.models.auth_session import AuthSession
 from app.schemas.user import UserResponse
@@ -36,9 +36,7 @@ class SignupRequest(BaseModel):
 		if not any(c in "!@#$%^&*()_+-=[]{}|;':\",./<>?" for c in v):
 			errors.append("one special character")
 		if errors:
-			raise ValueError(
-				"Password must contain " + ", ".join(errors) + "."
-			)
+			raise ValueError("Password must contain " + ", ".join(errors) + ".")
 		return v
 
 	@model_validator(mode="after")

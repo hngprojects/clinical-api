@@ -23,9 +23,8 @@ from app.api.deps import (
 )
 from app.core.config import get_settings
 from app.core.exceptions import UnauthorizedError
-from app.core.responses import SuccessResponse
 from app.core.rate_limit import enforce_rate_limit
-from app.core.security import hash_opaque_token
+from app.core.responses import SuccessResponse
 from app.core.security import hash_opaque_token, hash_password
 from app.models.otp import OtpPurpose
 from app.schemas.auth import (
@@ -88,46 +87,46 @@ def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
 
 # Signup
 @router.post(
-    "/signup",
-    response_model=SuccessResponse[OtpDispatchResponse],
-    status_code=status.HTTP_201_CREATED,
+	"/signup",
+	response_model=SuccessResponse[OtpDispatchResponse],
+	status_code=status.HTTP_201_CREATED,
 )
 async def signup(
-    payload: SignupRequest,
-    user_repo: UserRepo,
-    otp_repo: OtpRepo,
-    ip_hash: ClientIpHash,
+	payload: SignupRequest,
+	user_repo: UserRepo,
+	otp_repo: OtpRepo,
+	ip_hash: ClientIpHash,
 ) -> SuccessResponse[OtpDispatchResponse]:
-    """Register a new user and send a 6-digit OTP for email verification."""
-    settings = get_settings()
-    await enforce_rate_limit(
-        key=f"rl:signup:{ip_hash}",
-        limit=settings.SIGNUP_RATE_LIMIT,
-        window_seconds=settings.SIGNUP_RATE_WINDOW_SECONDS,
-    )
-    user, code = await signup_user(user_repo, otp_repo, payload)
-    email_dispatched = False
-    try:
-        send_otp_email_task.delay(
-            to_email=user.email,
-            first_name=user.first_name or user.email.split("@")[0],
-            code=code,
-            purpose=OtpPurpose.EMAIL_VERIFICATION.value,
-        )
-        email_dispatched = True
-    except Exception:
-        logger.exception("Failed to enqueue OTP email for %s", _mask_email(user.email))
-    return SuccessResponse(
-        message=(
-            "Verification code sent to your email."
-            if email_dispatched
-            else "Verification code created. If you do not receive an email, request a new code."
-        ),
-        data=OtpDispatchResponse(
-            email=user.email,
-            expires_in_seconds=otp_ttl_seconds(),
-        ),
-    )
+	"""Register a new user and send a 6-digit OTP for email verification."""
+	settings = get_settings()
+	await enforce_rate_limit(
+		key=f"rl:signup:{ip_hash}",
+		limit=settings.SIGNUP_RATE_LIMIT,
+		window_seconds=settings.SIGNUP_RATE_WINDOW_SECONDS,
+	)
+	user, code = await signup_user(user_repo, otp_repo, payload)
+	email_dispatched = False
+	try:
+		send_otp_email_task.delay(
+			to_email=user.email,
+			first_name=user.first_name or user.email.split("@")[0],
+			code=code,
+			purpose=OtpPurpose.EMAIL_VERIFICATION.value,
+		)
+		email_dispatched = True
+	except Exception:
+		logger.exception("Failed to enqueue OTP email for %s", _mask_email(user.email))
+	return SuccessResponse(
+		message=(
+			"Verification code sent to your email."
+			if email_dispatched
+			else "Verification code created. If you do not receive an email, request a new code."
+		),
+		data=OtpDispatchResponse(
+			email=user.email,
+			expires_in_seconds=otp_ttl_seconds(),
+		),
+	)
 
 
 # Login
