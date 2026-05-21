@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import json
 import logging
 from typing import AsyncIterator
@@ -32,7 +33,22 @@ class EventBus:
 
 	async def disconnect(self) -> None:
 		if self.redis:
-			await self.redis.close()
+			close = getattr(self.redis, "close", None)
+			aclose = getattr(self.redis, "aclose", None)
+			if callable(close):
+				try:
+					result = close()
+					if inspect.isawaitable(result):
+						await result
+				except Exception:
+					logger.exception("EventBus failed to close sync connection")
+			if callable(aclose):
+				try:
+					result = aclose()
+					if inspect.isawaitable(result):
+						await result
+				except Exception:
+					logger.exception("EventBus failed to aclose async connection")
 			logger.info("EventBus disconnected from Redis")
 
 	async def publish(
@@ -68,7 +84,7 @@ class EventBus:
 	async def subscribe(
 		self,
 		user_id: UUID,
-	) -> AsyncIterator[dict]:
+	) -> AsyncIterator[dict | None]:
 		if not self.redis:
 			logger.error("EventBus not connected")
 			return
@@ -82,10 +98,14 @@ class EventBus:
 
 		try:
 			while True:
-				message = await asyncio.wait_for(
-					pubsub.get_message(ignore_subscribe_messages=True),
-					timeout=idle_timeout,
-				)
+				try:
+					message = await asyncio.wait_for(
+						pubsub.get_message(ignore_subscribe_messages=True),
+						timeout=idle_timeout,
+					)
+				except asyncio.TimeoutError:
+					yield None
+					continue
 
 				if message:
 					try:
@@ -97,13 +117,11 @@ class EventBus:
 				else:
 					yield None
 
-		except asyncio.TimeoutError:
-			yield None
 		except asyncio.CancelledError:
 			logger.debug(f"Subscription cancelled for channel: {channel}")
 		except Exception:
 			logger.error(f"Subscription error for {channel}")
 		finally:
 			await pubsub.unsubscribe(channel)
-			await pubsub.close()
+			await pubsub.aclose()
 			logger.debug(f"Unsubscribed from channel: {channel}")
