@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import AsyncClient
@@ -15,19 +15,28 @@ pytestmark = pytest.mark.asyncio(loop_scope="session")
 API = "/api/v1"
 GUEST_HEADER = "X-Guest-Session-Id"
 PIPELINE_TASK = "app.tasks.pipeline.run_lab_result_pipeline"
-_UPLOAD = {
-	"file": {"name": "panel.jpg", "url": "https://storage.example.com/panel.jpg"},
+STORAGE_MOCK = "app.services.storage.upload_medical_file"
+
+_FAKE_FILE = ("panel.jpg", b"fake-image-bytes", "image/jpeg")
+_FAKE_METADATA = {
+	"filename": "panel.jpg",
+	"file_type": "image/jpeg",
+	"file_size": 16,
+	"file_url": "http://testserver/media/fake-uuid.jpg",
 }
 
 
 async def test_list_guest_cases_returns_uploaded_case(client: AsyncClient) -> None:
 	guest = await create_guest_session()
-	mock_task = MagicMock()
 
-	with patch(PIPELINE_TASK, mock_task):
+	with (
+		patch(PIPELINE_TASK, MagicMock()),
+		patch(STORAGE_MOCK, new_callable=AsyncMock, return_value=_FAKE_METADATA),
+	):
 		upload = await client.post(
 			f"{API}/upload",
-			json={**_UPLOAD, "guest_session_id": guest.guest_session_id},
+			files={"file": _FAKE_FILE},
+			headers={GUEST_HEADER: guest.guest_session_id},
 		)
 	assert upload.status_code == 201
 	case_id = upload.json()["data"]["case_id"]
