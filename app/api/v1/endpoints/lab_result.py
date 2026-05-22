@@ -40,8 +40,8 @@ async def upload(
 	"""Upload a lab result file.
 
 	Creates a MedicalCase and a LabResult in one action, then triggers
-	the OCR → AI pipeline. Authenticated users cannot upload using a
-	guest session simultaneously.
+	the OCR → AI pipeline. The upload is authenticated by user or guest session.
+	Authenticated users cannot upload using a guest session simultaneously.
 	"""
 	if ctx.user is None and ctx.guest_session_id is None:
 		raise UnauthorizedError("Missing authentication or guest session.")
@@ -49,6 +49,7 @@ async def upload(
 	if ctx.user is not None and ctx.guest_session_id is not None:
 		raise ForbiddenError("Authenticated users cannot upload using a guest session.")
 
+	# Enforce guest upload limit before accepting the file
 	if ctx.user is None and ctx.guest_session_id is not None:
 		await manager.can_use(ctx.guest_session_id, GuestUsageAction.UPLOAD)
 
@@ -80,6 +81,7 @@ async def upload(
 		public_url_base,
 	)
 
+	# Increment the guest upload counter after successful upload
 	if ctx.user is None and ctx.guest_session_id is not None:
 		await manager.increment_upload(ctx.guest_session_id)
 

@@ -15,6 +15,7 @@ API = "/api/v1"
 GUEST_HEADER = "X-Guest-Session-Id"
 PIPELINE_TASK = "app.tasks.pipeline.run_lab_result_pipeline"
 STORAGE_MOCK = "app.services.storage.upload_medical_file"
+GUEST_HEADER = "X-Guest-Session-Id"
 
 _FAKE_FILE = ("panel.jpg", b"fake-image-bytes", "image/jpeg")
 _FAKE_METADATA = {
