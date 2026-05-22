@@ -1,8 +1,8 @@
-"""Final table for MVP
+"""Update table schema MVP
 
-Revision ID: da75221c0906
+Revision ID: 6f6938d79f45
 Revises: 
-Create Date: 2026-05-19 21:02:53.841604
+Create Date: 2026-05-21 21:34:16.935570
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = 'da75221c0906'
+revision: str = '6f6938d79f45'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -91,7 +91,7 @@ def upgrade() -> None:
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('user_id', sa.UUID(), nullable=False),
     sa.Column('code_hash', sa.String(), nullable=False),
-    sa.Column('purpose', sa.Enum('email_verification', name='otppurpose'), nullable=False),
+    sa.Column('purpose', sa.Enum('email_verification', 'reset_password', name='otppurpose'), nullable=False),
     sa.Column('attempts', sa.Integer(), nullable=False),
     sa.Column('expires_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('consumed_at', sa.DateTime(timezone=True), nullable=True),
@@ -174,6 +174,15 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_lab_results_medical_case_id'), 'lab_results', ['medical_case_id'], unique=False)
+    op.create_table('medical_uploads',
+    sa.Column('id', sa.UUID(), nullable=False),
+    sa.Column('medical_case_id', sa.UUID(), nullable=False),
+    sa.Column('file', postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['medical_case_id'], ['medical_cases.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_medical_uploads_medical_case_id'), 'medical_uploads', ['medical_case_id'], unique=False)
     op.create_table('notification',
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('user_id', sa.UUID(), nullable=False),
@@ -217,6 +226,8 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_notification_user_id'), table_name='notification')
     op.drop_index(op.f('ix_notification_medical_case_id'), table_name='notification')
     op.drop_table('notification')
+    op.drop_index(op.f('ix_medical_uploads_medical_case_id'), table_name='medical_uploads')
+    op.drop_table('medical_uploads')
     op.drop_index(op.f('ix_lab_results_medical_case_id'), table_name='lab_results')
     op.drop_table('lab_results')
     op.drop_index(op.f('ix_chat_user_id'), table_name='chat')

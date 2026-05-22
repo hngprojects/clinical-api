@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import uuid
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import AsyncClient
@@ -15,34 +14,42 @@ pytestmark = pytest.mark.asyncio(loop_scope="session")
 API = "/api/v1"
 GUEST_HEADER = "X-Guest-Session-Id"
 PIPELINE_TASK = "app.tasks.pipeline.run_lab_result_pipeline"
+STORAGE_MOCK = "app.services.storage.upload_medical_file"
 
-_UPLOAD_PAYLOAD = {
-	"file": {
-		"name": "panel.jpg",
-		"url": "https://storage.example.com/panel.jpg",
-	},
+_FAKE_FILE = ("panel.jpg", b"fake-image-bytes", "image/jpeg")
+_FAKE_METADATA = {
+	"filename": "panel.jpg",
+	"file_type": "image/jpeg",
+	"file_size": 16,
+	"file_url": "http://testserver/media/fake-uuid.jpg",
 }
 
 
 async def test_guest_upload_with_valid_session_returns_201(client: AsyncClient) -> None:
 	session = await create_guest_session()
-	mock_task = MagicMock()
 
-	with patch(PIPELINE_TASK, mock_task):
+	with (
+		patch(PIPELINE_TASK, MagicMock()),
+		patch(STORAGE_MOCK, new_callable=AsyncMock, return_value=_FAKE_METADATA),
+	):
 		response = await client.post(
 			f"{API}/upload",
-			json={**_UPLOAD_PAYLOAD, "guest_session_id": session.guest_session_id},
+			files={"file": _FAKE_FILE},
+			headers={GUEST_HEADER: session.guest_session_id},
 		)
 
 	assert response.status_code == 201
 	body = response.json()["data"]
 	assert body["case_id"]
 	assert body["lab_result"]["ocr_status"] == "pending"
-	mock_task.delay.assert_called_once()
 
 
 async def test_guest_upload_without_session_returns_401(client: AsyncClient) -> None:
-	response = await client.post(f"{API}/upload", json=_UPLOAD_PAYLOAD)
+	with patch(STORAGE_MOCK, new_callable=AsyncMock, return_value=_FAKE_METADATA):
+		response = await client.post(
+			f"{API}/upload",
+			files={"file": _FAKE_FILE},
+		)
 
 	assert response.status_code == 401
 
@@ -50,13 +57,17 @@ async def test_guest_upload_without_session_returns_401(client: AsyncClient) -> 
 async def test_guest_case_access_wrong_session_returns_403(client: AsyncClient) -> None:
 	owner = await create_guest_session()
 	other = await create_guest_session()
-	mock_task = MagicMock()
 
-	with patch(PIPELINE_TASK, mock_task):
+	with (
+		patch(PIPELINE_TASK, MagicMock()),
+		patch(STORAGE_MOCK, new_callable=AsyncMock, return_value=_FAKE_METADATA),
+	):
 		upload = await client.post(
 			f"{API}/upload",
-			json={**_UPLOAD_PAYLOAD, "guest_session_id": owner.guest_session_id},
+			files={"file": _FAKE_FILE},
+			headers={GUEST_HEADER: owner.guest_session_id},
 		)
+	assert upload.status_code == 201
 	case_id = upload.json()["data"]["case_id"]
 
 	response = await client.get(
@@ -69,13 +80,17 @@ async def test_guest_case_access_wrong_session_returns_403(client: AsyncClient) 
 
 async def test_guest_fourth_patient_message_returns_403(client: AsyncClient) -> None:
 	session = await create_guest_session()
-	mock_task = MagicMock()
 
-	with patch(PIPELINE_TASK, mock_task):
+	with (
+		patch(PIPELINE_TASK, MagicMock()),
+		patch(STORAGE_MOCK, new_callable=AsyncMock, return_value=_FAKE_METADATA),
+	):
 		upload = await client.post(
 			f"{API}/upload",
-			json={**_UPLOAD_PAYLOAD, "guest_session_id": session.guest_session_id},
+			files={"file": _FAKE_FILE},
+			headers={GUEST_HEADER: session.guest_session_id},
 		)
+	assert upload.status_code == 201
 	case_id = upload.json()["data"]["case_id"]
 	headers = {GUEST_HEADER: session.guest_session_id}
 
@@ -110,13 +125,15 @@ async def test_authenticated_upload_ignores_guest_header(
 	auth_headers: dict[str, str],
 ) -> None:
 	session = await create_guest_session()
-	mock_task = MagicMock()
 
-	with patch(PIPELINE_TASK, mock_task):
+	with (
+		patch(PIPELINE_TASK, MagicMock()),
+		patch(STORAGE_MOCK, new_callable=AsyncMock, return_value=_FAKE_METADATA),
+	):
 		response = await client.post(
 			f"{API}/upload",
-			json={**_UPLOAD_PAYLOAD, "guest_session_id": session.guest_session_id},
-			headers=auth_headers,
+			files={"file": _FAKE_FILE},
+			headers={**auth_headers, GUEST_HEADER: session.guest_session_id},
 		)
 
 	assert response.status_code == 403

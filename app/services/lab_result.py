@@ -9,7 +9,6 @@ from app.models.medical_case import MedicalCase, MedicalCaseStatus
 from app.models.user import User
 from app.repositories.lab_result import LabResultRepository
 from app.repositories.medical_case import MedicalCaseRepository
-from app.repositories.medical_upload import MedicalUploadRepository
 from app.schemas.lab_result import LabResultCreate, LabResultUpdate, UploadRequest
 from app.services.guest_sessions import GuestSessionManager, GuestUsageAction
 
@@ -71,7 +70,6 @@ async def upload_lab_result(
 async def handle_file_upload(
 	lab_repo: LabResultRepository,
 	case_repo: MedicalCaseRepository,
-	upload_repo: MedicalUploadRepository,
 	file: bytes,
 	filename: str,
 	content_type: str,
@@ -92,13 +90,10 @@ async def handle_file_upload(
 	await case_repo.commit()
 	await case_repo.refresh(case)
 
-	# Persist the file and record metadata.
 	file_metadata = await upload_medical_file(
-		upload_repo,
 		file,
 		filename,
 		content_type,
-		case.id,
 		public_url_base,
 	)
 
