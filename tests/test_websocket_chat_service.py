@@ -1,7 +1,8 @@
+# coding: utf-8
 """
 Unit tests for app/services/websocket_chat.py
 
-These tests cover pure logic only — token counting, history trimming,
+These tests cover pure logic only - token counting, history trimming,
 message serialisation. No database or network calls needed.
 All DB-dependent functions (save_user_message, save_ai_message) are
 tested with mocked repositories.
@@ -25,7 +26,7 @@ from app.services.websocket_chat import (
 )
 
 
-# ── Helpers ─────────────────────────────────────────────────────────────
+# -- Helpers --
 
 def make_chat(text: str, sender: SenderType = SenderType.PATIENT) -> Chat:
     """Create a Chat object without touching the database."""
@@ -39,7 +40,7 @@ def make_chat(text: str, sender: SenderType = SenderType.PATIENT) -> Chat:
     )
 
 
-# ── chat_to_wire ───────────────────────────────────────────────────────────�
+# -- chat_to_wire --
 
 class TestChatToWire:
     def test_patient_message_serialises_correctly(self):
@@ -59,9 +60,8 @@ class TestChatToWire:
         assert result["sender_type"] == "ai"
 
     def test_missing_text_key_returns_empty_string(self):
-        # Edge case: content dict exists but has no "text" key
         msg = make_chat("", SenderType.PATIENT)
-        msg.content = {}  # simulate malformed content
+        msg.content = {}
         result = chat_to_wire(msg)
 
         assert result["content"] == ""
@@ -69,39 +69,33 @@ class TestChatToWire:
     def test_sent_at_is_iso_format(self):
         msg = make_chat("hello")
         result = chat_to_wire(msg)
-        # Should parse back without error
         from datetime import datetime
         datetime.fromisoformat(result["sent_at"])
 
 
-# ── _estimate_tokens ──────────────────────────────────────────────────────────
+# -- _estimate_tokens --
 
 class TestEstimateTokens:
     def test_empty_string_returns_one(self):
-        # max(1, ...) means empty string never returns 0
         assert _estimate_tokens("") == 1
 
     def test_short_string(self):
-        # "hello" = 5 chars, 5 // 4 = 1
         assert _estimate_tokens("hello") == 1
 
     def test_longer_string(self):
-        # 100 chars = 25 tokens
         assert _estimate_tokens("a" * 100) == 25
 
     def test_token_estimate_is_positive(self):
         assert _estimate_tokens("any text at all") > 0
 
 
-# ── trim_history ───────────────────────────────────────────────────────────�
+# -- trim_history --
 
 class TestTrimHistory:
     def test_short_history_not_trimmed(self):
         history = [make_chat("hello"), make_chat("hi", SenderType.AI)]
         system_prompt = "You are a helpful assistant."
         result = trim_history(history, system_prompt, "new message")
-
-        # Short history easily fits in 3000 tokens — nothing trimmed
         assert len(result) == 2
 
     def test_empty_history_returns_empty(self):
@@ -109,26 +103,18 @@ class TestTrimHistory:
         assert result == []
 
     def test_long_history_gets_trimmed(self):
-        # Create 100 messages with long content to force trimming
         history = [
             make_chat("a" * 200, SenderType.PATIENT if i % 2 == 0 else SenderType.AI)
             for i in range(100)
         ]
-        system_prompt = "You are a helpful assistant."
-        result = trim_history(history, system_prompt, "new question")
-
-        # Should be trimmed — fewer than 100 messages remain
+        result = trim_history(history, "You are a helpful assistant.", "new question")
         assert len(result) < 100
-        # But never below 2 (our hard floor)
         assert len(result) >= 2
 
     def test_never_trims_below_two_messages(self):
-        # Even if system prompt alone exceeds budget, keep last 2
         history = [make_chat("msg1"), make_chat("msg2", SenderType.AI)]
-        # Huge system prompt that eats all the budget
         huge_system = "word " * 5000
         result = trim_history(history, huge_system, "new message")
-
         assert len(result) == 2
 
     def test_single_message_history_not_trimmed_below_one(self):
@@ -137,18 +123,14 @@ class TestTrimHistory:
         assert len(result) == 1
 
     def test_trim_removes_oldest_first(self):
-        # Create messages with identifiable content
         history = [make_chat(f"message {i}") for i in range(20)]
-        # Force trim by using a large system prompt
         large_system = "word " * 2000
         result = trim_history(history, large_system, "new message")
-
         if len(result) < len(history):
-            # The remaining messages should be the most recent ones
             assert result[-1].content["text"] == "message 19"
 
 
-# ── save_user_message ─────────────────────────────────────────────────────────�
+# -- save_user_message --
 
 class TestSaveUserMessage:
     async def test_saves_with_correct_fields(self):
@@ -159,13 +141,10 @@ class TestSaveUserMessage:
 
         case_id = uuid.uuid4()
         user_id = uuid.uuid4()
-
         result = await save_user_message(mock_repo, case_id, user_id, "What is WBC?")
 
-        # Verify add was called with correct data
         mock_repo.add.assert_called_once()
         saved_msg = mock_repo.add.call_args[0][0]
-
         assert saved_msg.content == {"text": "What is WBC?"}
         assert saved_msg.sender_type == SenderType.PATIENT
         assert saved_msg.medical_case_id == case_id
@@ -178,12 +157,11 @@ class TestSaveUserMessage:
         mock_repo.refresh = AsyncMock()
 
         await save_user_message(mock_repo, uuid.uuid4(), uuid.uuid4(), "hello")
-
         mock_repo.commit.assert_awaited_once()
         mock_repo.refresh.assert_awaited_once()
 
 
-# ── save_ai_message ──────────────────────────────────────────────────────────�
+# -- save_ai_message --
 
 class TestSaveAiMessage:
     async def test_saves_with_correct_fields(self):
@@ -193,15 +171,13 @@ class TestSaveAiMessage:
         mock_repo.refresh = AsyncMock()
 
         case_id = uuid.uuid4()
-
         await save_ai_message(mock_repo, case_id, "High WBC means infection risk.")
 
         saved_msg = mock_repo.add.call_args[0][0]
-
         assert saved_msg.content == {"text": "High WBC means infection risk."}
         assert saved_msg.sender_type == SenderType.AI
         assert saved_msg.medical_case_id == case_id
-        assert saved_msg.user_id is None  # AI messages have no user_id
+        assert saved_msg.user_id is None
 
     async def test_commits_and_refreshes(self):
         mock_repo = MagicMock()
@@ -210,12 +186,11 @@ class TestSaveAiMessage:
         mock_repo.refresh = AsyncMock()
 
         await save_ai_message(mock_repo, uuid.uuid4(), "response text")
-
         mock_repo.commit.assert_awaited_once()
         mock_repo.refresh.assert_awaited_once()
 
 
-# ── generate_ai_response ───────────────────────────────────────────────────────
+# -- generate_ai_response --
 
 class TestGenerateAiResponse:
     async def test_streams_tokens_from_llm(self):
@@ -260,7 +235,6 @@ class TestGenerateAiResponse:
             async for _ in generate_ai_response("system", history, "tell me more"):
                 pass
 
-        # The user prompt should contain the history
         assert "What is WBC?" in captured_prompts["user"]
         assert "WBC stands for white blood cells." in captured_prompts["user"]
         assert "tell me more" in captured_prompts["user"]
