@@ -11,7 +11,18 @@ async def create_notification(
 	notif_repo: NotificationRepository,
 	payload: NotificationCreate,
 ) -> Notification:
-	"""Create a notification for a user."""
+	"""Create a notification for a user.
+
+	If the same user/case/type already exists, return the existing row.
+	"""
+	existing = await notif_repo.get_by_user_case_and_type(
+		payload.user_id,
+		payload.medical_case_id,
+		payload.type,
+	)
+	if existing is not None:
+		return existing
+
 	notif = Notification(
 		user_id=payload.user_id,
 		medical_case_id=payload.medical_case_id,
@@ -65,3 +76,19 @@ async def mark_as_read(
 	await notif_repo.commit()
 	await notif_repo.refresh(notif)
 	return notif
+
+
+async def get_notification_preferences(user: User) -> dict[str, bool]:
+	"""Return notification preferences for the authenticated user."""
+	return {"notify_on_complete": user.notify_on_complete}
+
+
+async def update_notification_preferences(
+	user_repo,
+	user: User,
+	payload,
+) -> User:
+	user.notify_on_complete = payload.notify_on_complete
+	await user_repo.commit()
+	await user_repo.refresh(user)
+	return user

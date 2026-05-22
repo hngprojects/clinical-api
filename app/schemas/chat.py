@@ -17,8 +17,6 @@ class ChatBase(BaseModel):
 class ChatCreate(ChatBase):
 	"""Request schema for creating a new chat message."""
 
-	user_id: uuid.UUID | None = None
-
 
 class ChatResponse(ChatBase):
 	"""Response schema for chat messages, includes all fields from the database model."""
