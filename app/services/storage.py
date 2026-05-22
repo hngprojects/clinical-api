@@ -14,10 +14,8 @@ async def upload_medical_file(
 	content_type: str,
 	public_url_base: str,
 ) -> dict:
-	"""Write the file to local storage and return its metadata.
-
-	No database record is created here — the LabResult.file field
-	already stores everything the pipeline needs.
+	"""
+	Write the file to local storage and return its metadata.
 	"""
 	settings = get_settings()
 

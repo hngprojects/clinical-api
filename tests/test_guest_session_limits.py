@@ -12,6 +12,7 @@ from app.services.guest import create_guest_session
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 API = "/api/v1"
+GUEST_HEADER = "X-Guest-Session-Id"
 PIPELINE_TASK = "app.tasks.pipeline.run_lab_result_pipeline"
 STORAGE_MOCK = "app.services.storage.upload_medical_file"
 GUEST_HEADER = "X-Guest-Session-Id"

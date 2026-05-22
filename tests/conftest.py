@@ -102,9 +102,6 @@ async def setup_database(request: pytest.FixtureRequest):
     async with nullpool_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield
-    async with nullpool_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-    await nullpool_engine.dispose()
 
 
 
