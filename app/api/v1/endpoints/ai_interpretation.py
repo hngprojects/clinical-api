@@ -33,7 +33,7 @@ async def list_for_case(
 		case_repo,
 		case_id,
 		user=ctx.user,
-		guest_session=ctx.guest_session,
+		guest_session_id=ctx.guest_session_id,
 		manager=manager,
 	)
 	interps = await list_interpretations_for_case(interp_repo, case_id, offset=offset, limit=limit)
@@ -59,7 +59,7 @@ async def latest_for_case(
 		case_repo,
 		case_id,
 		user=ctx.user,
-		guest_session=ctx.guest_session,
+		guest_session_id=ctx.guest_session_id,
 		manager=manager,
 	)
 	interp = await get_latest_for_case(interp_repo, case_id)
@@ -86,7 +86,7 @@ async def retrieve(
 		case_repo,
 		case_id,
 		user=ctx.user,
-		guest_session=ctx.guest_session,
+		guest_session_id=ctx.guest_session_id,
 		manager=manager,
 	)
 	interp = await get_interpretation(interp_repo, interpretation_id)

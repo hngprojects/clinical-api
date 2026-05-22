@@ -484,6 +484,7 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "pyjwt" },
     { name = "python-decouple" },
+    { name = "python-multipart" },
     { name = "redis" },
     { name = "resend" },
     { name = "sqlalchemy", extra = ["asyncio"] },
@@ -498,6 +499,7 @@ dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-pylembic" },
+    { name = "pytest-timeout" },
     { name = "ruff" },
 ]
 
@@ -519,8 +521,9 @@ requires-dist = [
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.4" },
     { name = "psycopg2-binary", specifier = ">=2.9.12" },
     { name = "pydantic-settings", specifier = ">=2.7.0" },
-    { name = "pyjwt", specifier = ">=2.10.1" },
+    { name = "pyjwt", specifier = ">=2.12.0" },
     { name = "python-decouple", specifier = ">=3.8" },
+    { name = "python-multipart", specifier = ">=0.0.12" },
     { name = "redis", specifier = ">=5.2.0" },
     { name = "resend", specifier = ">=0.8.0" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.36" },
@@ -535,6 +538,7 @@ dev = [
     { name = "pytest", specifier = ">=8.3.0" },
     { name = "pytest-asyncio", specifier = ">=0.24.0" },
     { name = "pytest-pylembic", specifier = ">=0.3.0" },
+    { name = "pytest-timeout", specifier = ">=2.3.0" },
     { name = "ruff", specifier = ">=0.15.12" },
 ]
 
@@ -1569,6 +1573,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/48/e9/4eb68da0a44de52001d59d70d296e4af37e4dc7bc2e04d02a4f16f895a21/pytest_pylembic-0.3.0.tar.gz", hash = "sha256:df2e641d7567a00c066d51d57d782b2ba53dc15720eef9d2704261c23620b20b", size = 55406, upload-time = "2025-07-22T15:01:31.038Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/92/87/ca493f3325a0c15131f40d131109581432be7fd8676c28bcb1bb397ac464/pytest_pylembic-0.3.0-py3-none-any.whl", hash = "sha256:84f7fd9817db4abbc46a6179559c8a60568cd7ca417c89aa3750a9a2c4d25164", size = 5765, upload-time = "2025-07-22T15:01:29.984Z" },
+]
+
+[[package]]
+name = "pytest-timeout"
+version = "2.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pytest" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ac/82/4c9ecabab13363e72d880f2fb504c5f750433b2b6f16e99f4ec21ada284c/pytest_timeout-2.4.0.tar.gz", hash = "sha256:7e68e90b01f9eff71332b25001f85c75495fc4e3a836701876183c4bcfd0540a", size = 17973, upload-time = "2025-05-05T19:44:34.99Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fa/b6/3127540ecdf1464a00e5a01ee60a1b09175f6913f0644ac748494d9c4b21/pytest_timeout-2.4.0-py3-none-any.whl", hash = "sha256:c42667e5cdadb151aeb5b26d114aff6bdf5a907f176a007a30b940d3d865b5c2", size = 14382, upload-time = "2025-05-05T19:44:33.502Z" },
 ]
 
 [[package]]

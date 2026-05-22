@@ -1,4 +1,3 @@
-import asyncio
 import json
 import logging
 from collections.abc import AsyncIterator
@@ -108,16 +107,9 @@ async def _stream_notifications(
 		try:
 			while True:
 				try:
-					# Wait up to 30s for an event; if none, send a ping to keep the connection alive.
-					event = await asyncio.wait_for(sub_iter.__anext__(), timeout=30)
-				except asyncio.TimeoutError:
-					event = None
+					event = await sub_iter.__anext__()
 				except StopAsyncIteration:
 					break
-
-				if await request.is_disconnected():
-					logger.info("SSE client disconnected during live subscribe for user=%s", current_user.id)
-					return
 
 				if event is None:
 					logger.debug("SSE yielding ping for user=%s", current_user.id)

@@ -126,7 +126,7 @@ def run_lab_result_pipeline(self, lab_result_id: str) -> None:
 
 	try:
 		loop = _get_worker_loop()
-		loop.run_until_complete(_run_pipeline(UUID(lab_result_id)))
+		loop.run_until_complete(_run_pipeline(UUID(lab_result_id), attempt=self.request.retries))
 	except Exception as exc:
 		logger.exception(
 			"[pipeline] error on attempt %d/%d for lab_result_id=%s",
@@ -222,11 +222,12 @@ async def _mark_pipeline_dead(
 		)
 
 
-async def _run_pipeline(lab_result_id: UUID) -> None:
+async def _run_pipeline(lab_result_id: UUID, attempt: int = 0) -> None:
 	"""Execute the full OCR → AI pipeline for one lab result."""
 	import time
 
 	from app.db.session import AsyncSessionLocal
+	from app.services.llm import get_last_provider
 
 	async with AsyncSessionLocal() as session:
 		lab_result = await _get_lab_result(session, lab_result_id)
@@ -240,7 +241,7 @@ async def _run_pipeline(lab_result_id: UUID) -> None:
 
 		user_id: UUID | None = await _get_case_user_id(session, case_id)
 
-		await _log_event(session, lab_result_id, "PIPELINE_STARTED")
+		await _log_event(session, lab_result_id, "PIPELINE_STARTED", attempt=attempt)
 
 		# Guard: storage URL must be present
 		if not file_url:
@@ -277,6 +278,8 @@ async def _run_pipeline(lab_result_id: UUID) -> None:
 				status_before="processing",
 				status_after="complete",
 				duration_ms=ocr_ms,
+				provider=get_last_provider(),
+				attempt=attempt,
 			)
 
 		except OCRExtractionError as exc:
@@ -291,6 +294,8 @@ async def _run_pipeline(lab_result_id: UUID) -> None:
 				status_before="processing",
 				status_after="failed",
 				duration_ms=ocr_ms,
+				provider=get_last_provider(),
+				attempt=attempt,
 				error=str(exc),
 			)
 			await _publish_pipeline_event(session, user_id, "interpretation_failed", {"case_id": str(case_id)}, case_id)
@@ -322,6 +327,8 @@ async def _run_pipeline(lab_result_id: UUID) -> None:
 				status_before="processing",
 				status_after="complete",
 				duration_ms=ai_ms,
+				provider=get_last_provider(),
+				attempt=attempt,
 			)
 			await _publish_pipeline_event(session, user_id, "interpretation_ready", {"case_id": str(case_id)}, case_id)
 
@@ -337,6 +344,8 @@ async def _run_pipeline(lab_result_id: UUID) -> None:
 				status_before="processing",
 				status_after="failed",
 				duration_ms=ai_ms,
+				provider=get_last_provider(),
+				attempt=attempt,
 				error=str(exc),
 			)
 			await _publish_pipeline_event(session, user_id, "interpretation_failed", {"case_id": str(case_id)}, case_id)

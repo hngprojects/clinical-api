@@ -142,7 +142,7 @@ def trim_history(
 	- System prompt tokens are counted but never removed here
 	- The new user message is included in the budget calculation
 	- We always keep at least the last 2 messages (one full exchange) even
-	  if they alone exceed the budget — prevents an infinite trim loop
+	if they alone exceed the budget — prevents an infinite trim loop
 	- We drop one message at a time from the oldest end until it fits
 	"""
 	system_tokens = _estimate_tokens(system_prompt)

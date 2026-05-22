@@ -7,12 +7,12 @@ from app.api.deps import (
 	GuestSessionManagerDep,
 	LabResultRepo,
 	MedicalCaseRepo,
-	MedicalUploadRepo,
 	SessionContextDep,
 )
-from app.core.exceptions import BadRequestError, UnauthorizedError
+from app.core.exceptions import BadRequestError, ForbiddenError, UnauthorizedError
 from app.core.responses import SuccessResponse
 from app.schemas.lab_result import LabResultCreate, LabResultResponse, UploadResponse
+from app.services.guest_sessions import GuestUsageAction
 from app.services.lab_result import (
 	create_lab_result,
 	get_lab_result,
@@ -32,18 +32,25 @@ router = APIRouter(tags=["lab-results"])
 async def upload(
 	request: Request,
 	ctx: SessionContextDep,
+	manager: GuestSessionManagerDep,
 	lab_repo: LabResultRepo,
 	case_repo: MedicalCaseRepo,
-	upload_repo: MedicalUploadRepo,
 	file: UploadFile = File(...),
 ) -> SuccessResponse[UploadResponse]:
 	"""Upload a lab result file.
 
 	Creates a MedicalCase and a LabResult in one action, then triggers
-	the OCR → AI pipeline. The upload is authenticated by user or guest session.
+	the OCR → AI pipeline. Authenticated users cannot upload using a
+	guest session simultaneously.
 	"""
 	if ctx.user is None and ctx.guest_session_id is None:
 		raise UnauthorizedError("Missing authentication or guest session.")
+
+	if ctx.user is not None and ctx.guest_session_id is not None:
+		raise ForbiddenError("Authenticated users cannot upload using a guest session.")
+
+	if ctx.user is None and ctx.guest_session_id is not None:
+		await manager.can_use(ctx.guest_session_id, GuestUsageAction.UPLOAD)
 
 	valid_media_types = {
 		"image/jpeg",
@@ -65,7 +72,6 @@ async def upload(
 	case, lab_result = await handle_file_upload(
 		lab_repo,
 		case_repo,
-		upload_repo,
 		file_contents,
 		file.filename,
 		file.content_type or "application/octet-stream",
@@ -73,6 +79,9 @@ async def upload(
 		ctx.guest_session_id,
 		public_url_base,
 	)
+
+	if ctx.user is None and ctx.guest_session_id is not None:
+		await manager.increment_upload(ctx.guest_session_id)
 
 	return SuccessResponse(
 		message="Upload received. Processing started.",

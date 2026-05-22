@@ -14,7 +14,6 @@ if TYPE_CHECKING:
 	from app.models.chat import Chat
 	from app.models.guest_session import GuestSession
 	from app.models.lab_result import LabResult
-	from app.models.medical_upload import MedicalUpload
 	from app.models.notification import Notification
 	from app.models.user import User
 
@@ -55,4 +54,3 @@ class MedicalCase(Base):
 	ai_interpretations: Mapped[list["AIInterpretation"]] = relationship(back_populates="medical_case")
 	chats: Mapped[list["Chat"]] = relationship(back_populates="medical_case")
 	notifications: Mapped[list["Notification"]] = relationship(back_populates="medical_case")
-	medical_upload: Mapped["MedicalUpload"] = relationship(back_populates="medical_case", cascade="all, delete-orphan")

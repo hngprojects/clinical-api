@@ -1,4 +1,3 @@
-import asyncio
 import json
 import logging
 from uuid import UUID
@@ -15,7 +14,6 @@ class ConnectionRegistry:
 		self.active_connections: dict[UUID, list[WebSocket]] = {}
 		# Track SSE streams separately (simple counter per user)
 		self.active_streams: dict[UUID, int] = {}
-		self._lock = asyncio.Lock()
 
 	def connect(self, user_id: UUID, websocket: WebSocket) -> None:
 		if user_id not in self.active_connections:
@@ -46,16 +44,16 @@ class ConnectionRegistry:
 				)
 
 	async def broadcast(self, user_id: UUID, message: dict) -> None:
-		if user_id not in self.active_connections:
-			return
-
 		message_json = json.dumps(message)
 		if len(message_json.encode("utf-8")) > MAX_WEBSOCKET_MESSAGE_BYTES:
 			logger.warning("WebSocket message too large", extra={"user_id": str(user_id)})
 			return
 
-		async with self._lock:
-			connections = self.active_connections[user_id][:]
+		# Take a snapshot of the current connections to avoid mutating
+		# the list while iterating if disconnect() is called during broadcast.
+		connections = self.active_connections.get(user_id, [])[:]
+		if not connections:
+			return
 
 		dead_sockets = []
 		for websocket in connections:

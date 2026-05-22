@@ -7,7 +7,6 @@ from app.models.contact import ContactMessage
 from app.models.guest_session import GuestSession
 from app.models.lab_result import LabResult
 from app.models.medical_case import MedicalCase
-from app.models.medical_upload import MedicalUpload
 from app.models.notification import Notification
 from app.models.otp import OtpCode, OtpPurpose
 from app.models.pipeline_audit_log import PipelineAuditLog
@@ -33,5 +32,4 @@ __all__ = [
 	"User",
 	"UserRole",
 	"Waitlist",
-	"MedicalUpload",
 ]

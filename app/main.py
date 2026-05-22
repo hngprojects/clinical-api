@@ -26,7 +26,12 @@ async def lifespan(app: FastAPI):
 	configure_celery()
 
 	event_bus = EventBus(settings.CELERY_BROKER_URL)
-	await event_bus.connect()
+	try:
+		await event_bus.connect()
+	except Exception:
+		# Redis-backed eventing is optional for API startup in environments
+		# where Redis is not provisioned (e.g., some CI jobs).
+		pass
 	app.state.event_bus = event_bus
 
 	connection_registry = ConnectionRegistry()
@@ -38,6 +43,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title=settings.PROJECT_NAME, lifespan=lifespan)
+app.state.connection_registry = ConnectionRegistry()
 
 media_dir = Path(settings.MEDIA_DIR)
 media_dir.mkdir(parents=True, exist_ok=True)
