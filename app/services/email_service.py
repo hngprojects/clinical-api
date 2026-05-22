@@ -62,7 +62,7 @@ def _prepare_otp(ctx: dict) -> None:
 
 
 def _prepare_waitlist(ctx: dict) -> None:
-	ctx["first_name"] = ctx.get("first_name", "there")
+	ctx["first_name"] = ctx.get("first_name") or ctx.get("name") or "there"
 
 
 def _prepare_welcome(ctx: dict) -> None:

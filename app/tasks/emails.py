@@ -36,9 +36,9 @@ def send_otp_email_task(
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=30)
-def send_waitlist_email_task(self, to_email: str, name: str | None = None) -> None:
+def send_waitlist_email_task(self, to_email: str, first_name: str | None = None) -> None:
 	try:
-		send_email_sync(EMAIL_TYPE.WAITLIST, to_email, {"name": name})
+		send_email_sync(EMAIL_TYPE.WAITLIST, to_email, {"first_name": first_name})
 	except Exception as exc:
 		logger.warning("Waitlist email task failed (retrying): %s", exc, exc_info=True)
 		raise self.retry(exc=exc) from exc

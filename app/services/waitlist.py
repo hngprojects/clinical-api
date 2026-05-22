@@ -12,7 +12,7 @@ async def join_waitlist(
 	email = payload.email.strip().lower()
 	existing = await waitlist_repo.get_by_email(email)
 	if existing is not None:
-		raise ConflictError("This email is already on the waitlist.")
+		raise ConflictError("You're already on the waitlist.")
 	entry = Waitlist(email=email)
 	waitlist_repo.add(entry)
 	await waitlist_repo.commit()
