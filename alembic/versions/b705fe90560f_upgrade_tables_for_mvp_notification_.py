@@ -1,8 +1,8 @@
-"""Update table schema MVP
+"""Upgrade tables for MVP - notification preferences
 
-Revision ID: 6f6938d79f45
+Revision ID: b705fe90560f
 Revises: 
-Create Date: 2026-05-21 21:34:16.935570
+Create Date: 2026-05-22 09:41:10.582139
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = '6f6938d79f45'
+revision: str = 'b705fe90560f'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -40,6 +40,7 @@ def upgrade() -> None:
     sa.Column('last_name', sa.String(), nullable=False),
     sa.Column('role', sa.Enum('patient', 'admin', name='userrole'), nullable=False),
     sa.Column('is_email_verified', sa.Boolean(), nullable=False),
+    sa.Column('notify_on_complete', sa.Boolean(), nullable=False),
     sa.Column('is_active', sa.Boolean(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('last_login_at', sa.DateTime(timezone=True), nullable=True),
@@ -174,15 +175,6 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_lab_results_medical_case_id'), 'lab_results', ['medical_case_id'], unique=False)
-    op.create_table('medical_uploads',
-    sa.Column('id', sa.UUID(), nullable=False),
-    sa.Column('medical_case_id', sa.UUID(), nullable=False),
-    sa.Column('file', postgresql.JSONB(astext_type=sa.Text()), nullable=False),
-    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
-    sa.ForeignKeyConstraint(['medical_case_id'], ['medical_cases.id'], ondelete='CASCADE'),
-    sa.PrimaryKeyConstraint('id')
-    )
-    op.create_index(op.f('ix_medical_uploads_medical_case_id'), 'medical_uploads', ['medical_case_id'], unique=False)
     op.create_table('notification',
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('user_id', sa.UUID(), nullable=False),
@@ -193,10 +185,12 @@ def upgrade() -> None:
     sa.Column('data', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.Column('is_read', sa.Boolean(), nullable=False),
     sa.Column('read_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('delivered_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['medical_case_id'], ['medical_cases.id'], ondelete='SET NULL'),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('user_id', 'medical_case_id', 'type', name='uq_notification_user_case_type')
     )
     op.create_index(op.f('ix_notification_medical_case_id'), 'notification', ['medical_case_id'], unique=False)
     op.create_index(op.f('ix_notification_user_id'), 'notification', ['user_id'], unique=False)
@@ -226,8 +220,6 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_notification_user_id'), table_name='notification')
     op.drop_index(op.f('ix_notification_medical_case_id'), table_name='notification')
     op.drop_table('notification')
-    op.drop_index(op.f('ix_medical_uploads_medical_case_id'), table_name='medical_uploads')
-    op.drop_table('medical_uploads')
     op.drop_index(op.f('ix_lab_results_medical_case_id'), table_name='lab_results')
     op.drop_table('lab_results')
     op.drop_index(op.f('ix_chat_user_id'), table_name='chat')

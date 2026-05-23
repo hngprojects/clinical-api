@@ -94,33 +94,37 @@ class EventBus:
 		await pubsub.subscribe(channel)
 		logger.debug(f"Subscribed to channel: {channel}")
 
-		idle_timeout = 30
+		idle_seconds = 0
+		KEEPALIVE_INTERVAL = 30
 
 		try:
 			while True:
-				try:
-					message = await asyncio.wait_for(
-						pubsub.get_message(ignore_subscribe_messages=True),
-						timeout=idle_timeout,
-					)
-				except asyncio.TimeoutError:
-					yield None
-					continue
+				# Non-blocking check — get_message() with no timeout returns None
+				# immediately if there is nothing in the buffer. This avoids
+				# relying on redis-py's internal asyncio.wait_for which can
+				# terminate the generator silently on timeout in Python 3.12+.
+				message = await pubsub.get_message(ignore_subscribe_messages=True)
 
-				if message:
+				if message is not None:
+					idle_seconds = 0
 					try:
 						data = json.loads(message["data"])
 						yield data
 					except (json.JSONDecodeError, KeyError, TypeError):
-						logger.error("Failed to deserialize message")
-						continue
+						logger.error("Failed to deserialize message on channel %s", channel)
 				else:
-					yield None
+					# No message — sleep 1s then check again
+					await asyncio.sleep(1)
+					idle_seconds += 1
+					if idle_seconds >= KEEPALIVE_INTERVAL:
+						idle_seconds = 0
+						yield None  # keepalive signal for the SSE endpoint
 
 		except asyncio.CancelledError:
 			logger.debug(f"Subscription cancelled for channel: {channel}")
+			raise  # must re-raise so cancellation propagates to the caller
 		except Exception:
-			logger.error(f"Subscription error for {channel}")
+			logger.exception(f"Subscription error for {channel}")
 		finally:
 			await pubsub.unsubscribe(channel)
 			await pubsub.aclose()

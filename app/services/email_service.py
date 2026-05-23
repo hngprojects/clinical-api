@@ -53,7 +53,11 @@ def _prepare_password_reset(ctx: dict) -> None:
 
 
 def _prepare_otp(ctx: dict) -> None:
-	ctx["pin"] = ctx.get("pin") or ctx.get("code", "")
+	pin = ctx.get("pin") or ctx.get("otp") or ctx.get("code", "")
+	ctx["pin"] = pin
+	ctx["otp"] = ctx.get("otp") or pin
+	ctx["name"] = ctx.get("name") or ctx.get("first_name") or "there"
+	ctx["baseUrl"] = ctx.get("baseUrl") or ctx.get("base_url") or ctx.get("frontend_url") or ""
 	ctx["expirationTime"] = ctx.get("expiration_time", "10 minutes")
 
 

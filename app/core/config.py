@@ -14,7 +14,7 @@ ENV_FILES = {
 
 class Settings(BaseSettings):
 	model_config = SettingsConfigDict(
-		env_file=ENV_FILES.get(APP_ENV, ".env.staging"),
+		env_file=ENV_FILES.get(APP_ENV, ".env"),
 		env_file_encoding="utf-8",
 		case_sensitive=True,
 		extra="ignore",

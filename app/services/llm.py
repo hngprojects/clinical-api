@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import AsyncGenerator
+from contextvars import ContextVar
 from typing import Any
 
 import httpx
@@ -31,6 +32,14 @@ import redis.asyncio as aioredis
 from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
+
+_last_provider_used: ContextVar[str | None] = ContextVar("last_provider_used", default=None)
+
+
+def get_last_provider() -> str | None:
+	"""Return the provider that handled the most recent LLM call in this task."""
+	return _last_provider_used.get()
+
 
 # HTTP status codes that trigger a provider fallback in "auto" mode
 _FALLBACK_STATUS_CODES = {401, 403, 429, 502, 503, 504}
@@ -324,6 +333,7 @@ async def text_complete(
 				result = await _gemini_text(system, user, max_tokens, temperature)
 
 			await _record_success(provider)
+			_last_provider_used.set(provider)
 			if len(order) > 1:
 				logger.debug("[llm] text_complete fulfilled by %s", provider)
 			return result
@@ -377,6 +387,13 @@ async def vision_complete(
 	last_exc: Exception | None = None
 
 	for provider in order:
+		# OpenAI vision only accepts image types — PDFs cause a 400.
+		# Skip and send to Gemini to handle it/
+		if provider == "openai" and media_type == "application/pdf":
+			logger.debug("[llm] skipping openai for PDF — not supported, trying next provider")
+			last_exc = LLMProviderError("OpenAI vision does not support PDF files")
+			continue
+
 		if await _is_circuit_open(provider):
 			logger.warning("[circuit] %s circuit is open — skipping for vision_complete", provider)
 			last_exc = CircuitBreakerOpen(f"{provider} circuit breaker is open")
@@ -389,6 +406,7 @@ async def vision_complete(
 				result = await _gemini_vision(system, user, b64_data, media_type, max_tokens)
 
 			await _record_success(provider)
+			_last_provider_used.set(provider)
 			if len(order) > 1:
 				logger.debug("[llm] vision_complete fulfilled by %s", provider)
 			return result

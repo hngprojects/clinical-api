@@ -23,6 +23,15 @@ pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 API = "/api/v1"
 PIPELINE_TASK = "app.tasks.pipeline.run_lab_result_pipeline"
+STORAGE_MOCK = "app.services.storage.upload_medical_file"
+
+_FAKE_FILE = ("panel.jpg", b"fake-image-bytes", "image/jpeg")
+_FAKE_METADATA = {
+	"filename": "panel.jpg",
+	"file_type": "image/jpeg",
+	"file_size": 16,
+	"file_url": "http://testserver/media/fake-uuid.jpg",
+}
 
 
 async def test_migrate_guest_session_links_cases_and_chats() -> None:
@@ -95,16 +104,11 @@ async def test_verify_otp_migrates_guest_case(client: AsyncClient) -> None:
 
 	with (
 		patch(PIPELINE_TASK, MagicMock()),
-		patch("app.services.storage.upload_medical_file", new_callable=AsyncMock, return_value={
-			"filename": "panel.jpg",
-			"file_type": "image/jpeg",
-			"file_size": 16,
-			"file_url": "http://testserver/media/fake-uuid.jpg",
-		}),
+		patch(STORAGE_MOCK, new_callable=AsyncMock, return_value=_FAKE_METADATA),
 	):
 		upload = await client.post(
 			f"{API}/upload",
-			files={"file": ("panel.jpg", b"fake-image-bytes", "image/jpeg")},
+			files={"file": _FAKE_FILE},
 			headers={"X-Guest-Session-Id": guest.guest_session_id},
 		)
 	assert upload.status_code == 201

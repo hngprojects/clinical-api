@@ -284,6 +284,10 @@ async def websocket_chat(websocket: WebSocket) -> None:
 					await websocket.send_json(make_error("VALIDATION_ERROR", str(exc)))
 					continue
 
+				if not user_msg.content.strip():
+					await websocket.send_json(make_error("VALIDATION_ERROR", "Message content cannot be empty."))
+					continue
+
 				position = queue.qsize()
 				await queue.put(user_msg.content)
 
@@ -307,6 +311,10 @@ async def websocket_chat(websocket: WebSocket) -> None:
 		except asyncio.TimeoutError:
 			logger.warning("[ws_chat] consumer timed out — cancelling user=%s", user_id)
 			consumer.cancel()
+			try:
+				await consumer
+			except (asyncio.CancelledError, Exception):
+				pass  # task is done, swallow cancellation
 
 		registry.disconnect(user_id, websocket)
 		logger.info("[ws_chat] cleaned up user=%s case=%s", user_id, case_id)
