@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 from app.models.doctor_profile import DoctorVerificationStatus
 
@@ -44,3 +44,11 @@ class DoctorProfileResponse(BaseModel):
 	updated_at: datetime
 
 	model_config = ConfigDict(from_attributes=True)
+
+	@field_serializer("mdcn_license_number", "nin")
+	def _mask_sensitive_identifier(self, value: str | None) -> str | None:
+		if value is None:
+			return None
+		if len(value) <= 4:
+			return "*" * len(value)
+		return f"{'*' * (len(value) - 4)}{value[-4:]}"

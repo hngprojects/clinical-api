@@ -229,8 +229,8 @@ async def test_save_credentials_success(client):
 
 	assert response.status_code == 200
 	data = response.json()["data"]
-	assert data["mdcn_license_number"] == "MDCN-12345"
-	assert data["nin"] == "12345678901"
+	assert data["mdcn_license_number"] == "******2345"
+	assert data["nin"] == "*******8901"
 
 	await _delete_user(doctor.id)
 
