@@ -15,8 +15,27 @@ class SignupRequest(BaseModel):
 
 	model_config = ConfigDict(str_strip_whitespace=True)
 
-	first_name: str = Field(min_length=1, max_length=100)
-	last_name: str = Field(min_length=1, max_length=100)
+	first_name: str
+	last_name: str
+
+	@field_validator("first_name")
+	@classmethod
+	def validate_first_name(cls, v: str) -> str:
+		if not v:
+			raise ValueError("First name cannot be empty.")
+		if len(v) > 100:
+			raise ValueError("First name must be 100 characters or fewer.")
+		return v
+
+	@field_validator("last_name")
+	@classmethod
+	def validate_last_name(cls, v: str) -> str:
+		if not v:
+			raise ValueError("Last name cannot be empty.")
+		if len(v) > 100:
+			raise ValueError("Last name must be 100 characters or fewer.")
+		return v
+
 	email: EmailStr
 	password: str = Field(min_length=8, max_length=72)
 	confirm_password: str = Field(min_length=8, max_length=72)
