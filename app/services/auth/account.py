@@ -74,60 +74,60 @@ async def signup_user(
 
 
 async def signup_doctor(
-    user_repo: UserRepository,
-    otp_repo: OtpRepository,
-    payload: DoctorSignupRequest,
+	user_repo: UserRepository,
+	otp_repo: OtpRepository,
+	payload: DoctorSignupRequest,
 ) -> tuple[User, str]:
-    """Create an unverified doctor account (with hashed password) and return an email-verification OTP.
+	"""Create an unverified doctor account (with hashed password) and return an email-verification OTP.
 
-    Role is always set server-side — callers cannot self-elevate via the
-    patient signup flow.
+	Role is always set server-side — callers cannot self-elevate via the
+	patient signup flow.
 
-    If an unverified account already exists for the email it is reused,
-    password and profile fields are refreshed.
-    """
-    email = payload.email.strip().lower()
-    existing = await user_repo.get_by_email(email)
+	If an unverified account already exists for the email it is reused,
+	password and profile fields are refreshed.
+	"""
+	email = payload.email.strip().lower()
+	existing = await user_repo.get_by_email(email)
 
-    if existing is not None:
-        if existing.is_email_verified:
-            raise ConflictError("An account with this email already exists.")
-        existing.password_hash = hash_password(payload.password)
-        existing.first_name = payload.first_name.strip()
-        existing.last_name = payload.last_name.strip()
-        existing.phone_number = payload.phone_number.strip()
-        existing.role = UserRole.DOCTOR
-        user = existing
-    else:
-        try:
-            user = User(
-                email=email,
-                first_name=payload.first_name.strip(),
-                last_name=payload.last_name.strip(),
-                phone_number=payload.phone_number.strip(),
-                password_hash=hash_password(payload.password),
-                role=UserRole.DOCTOR,
-                is_email_verified=False,
-                is_active=True,
-            )
-            user_repo.add(user)
-            await user_repo.flush()
-        except IntegrityError:
-            await user_repo.rollback()
-            user = await user_repo.get_by_email(email)
-            if user is None or user.is_email_verified:
-                raise ConflictError("An account with this email already exists.")
-            user.password_hash = hash_password(payload.password)
-            user.first_name = payload.first_name.strip()
-            user.last_name = payload.last_name.strip()
-            user.phone_number = payload.phone_number.strip()
-            user.role = UserRole.DOCTOR
+	if existing is not None:
+		if existing.is_email_verified:
+			raise ConflictError("An account with this email already exists.")
+		existing.password_hash = hash_password(payload.password)
+		existing.first_name = payload.first_name.strip()
+		existing.last_name = payload.last_name.strip()
+		existing.phone_number = payload.phone_number.strip()
+		existing.role = UserRole.DOCTOR
+		user = existing
+	else:
+		try:
+			user = User(
+				email=email,
+				first_name=payload.first_name.strip(),
+				last_name=payload.last_name.strip(),
+				phone_number=payload.phone_number.strip(),
+				password_hash=hash_password(payload.password),
+				role=UserRole.DOCTOR,
+				is_email_verified=False,
+				is_active=True,
+			)
+			user_repo.add(user)
+			await user_repo.flush()
+		except IntegrityError:
+			await user_repo.rollback()
+			user = await user_repo.get_by_email(email)
+			if user is None or user.is_email_verified:
+				raise ConflictError("An account with this email already exists.")
+			user.password_hash = hash_password(payload.password)
+			user.first_name = payload.first_name.strip()
+			user.last_name = payload.last_name.strip()
+			user.phone_number = payload.phone_number.strip()
+			user.role = UserRole.DOCTOR
 
-    _, code = await create_otp_for_user(otp_repo, user_id=user.id, purpose=OtpPurpose.EMAIL_VERIFICATION)
-    await user_repo.commit()
-    await user_repo.refresh(user)
+	_, code = await create_otp_for_user(otp_repo, user_id=user.id, purpose=OtpPurpose.EMAIL_VERIFICATION)
+	await user_repo.commit()
+	await user_repo.refresh(user)
 
-    return user, code
+	return user, code
 
 
 async def authenticate_credentials(

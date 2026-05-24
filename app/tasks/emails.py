@@ -23,7 +23,7 @@ def send_otp_email_task(
 	code: str,
 	purpose: str = "OTP",
 	first_name: str | None = None,
-	is_doctor: bool = False, 
+	is_doctor: bool = False,
 ) -> None:
 	try:
 		send_email_sync(

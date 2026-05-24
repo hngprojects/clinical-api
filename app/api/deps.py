@@ -184,7 +184,6 @@ async def require_doctor(current_user: CurrentUser) -> User:
 DoctorUser = Annotated[User, Depends(require_doctor)]
 
 
-
 async def get_optional_user(
 	user_repo: UserRepo,
 	blocklist_repo: TokenBlocklistRepo,
