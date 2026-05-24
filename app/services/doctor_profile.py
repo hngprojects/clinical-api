@@ -36,6 +36,7 @@ async def save_professional_info(
 	await repo.refresh(profile)
 	return profile
 
+
 async def _read_with_size_limit(file: UploadFile, max_size: int) -> bytes:
 	chunks: list[bytes] = []
 	total = 0
