@@ -20,13 +20,17 @@ def upgrade() -> None:
     # Add doctor to userrole enum
     op.execute("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'doctor'")
 
-    # Add phone_number to users
-    op.add_column("users", sa.Column("phone_number", sa.String(), nullable=True))
+    # Add phone_number to users (with check to prevent error if already exists)
+    # Using raw SQL is safer if you are worried about repeated runs
+    op.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_number VARCHAR")
 
-    # Create doctorverificationstatus enum
+    # Create doctorverificationstatus enum with a safety check
     op.execute(
-        "CREATE TYPE doctorverificationstatus AS ENUM "
-        "('incomplete', 'pending_review', 'verified', 'rejected')"
+        "DO $$ BEGIN "
+        "IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'doctorverificationstatus') THEN "
+        "CREATE TYPE doctorverificationstatus AS ENUM ('incomplete', 'pending_review', 'verified', 'rejected'); "
+        "END IF; "
+        "END $$;"
     )
 
     # Create doctor_profiles table
