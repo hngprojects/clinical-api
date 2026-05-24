@@ -9,10 +9,10 @@ from unittest.mock import patch
 import pytest
 from sqlalchemy import select
 
+from app.core.security import hash_password
 from app.db.session import AsyncSessionLocal
 from app.models.doctor_profile import DoctorProfile, DoctorVerificationStatus
 from app.models.user import User, UserRole
-from app.core.security import hash_password
 from app.services.auth.tokens import create_access_token
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
