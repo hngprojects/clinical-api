@@ -152,19 +152,19 @@ class GoogleAuthData(BaseModel):
 
 
 class DoctorSignupRequest(BaseModel):
-    """Signup form for doctors: name, phone, email, password.
-	
+	"""Signup form for doctors: name, phone, email, password.
+
 	After account creation a 6-digit OTP is emailed for address verification.
 	"""
 
-    model_config = ConfigDict(str_strip_whitespace=True)
+	model_config = ConfigDict(str_strip_whitespace=True)
 
-    first_name: str = Field(min_length=1, max_length=100)
-    last_name: str = Field(min_length=1, max_length=100)
-    phone_number: str = Field(min_length=7, max_length=20)
-    email: EmailStr
-    password: str = Field(min_length=8, max_length=72)
-    confirm_password: str = Field(min_length=8, max_length=72)
+	first_name: str = Field(min_length=1, max_length=100)
+	last_name: str = Field(min_length=1, max_length=100)
+	phone_number: str = Field(min_length=7, max_length=20)
+	email: EmailStr
+	password: str = Field(min_length=8, max_length=72)
+	confirm_password: str = Field(min_length=8, max_length=72)
 
 	@field_validator("password")
 	@classmethod
@@ -184,8 +184,8 @@ class DoctorSignupRequest(BaseModel):
 			raise ValueError("Password must contain " + ", ".join(errors) + ".")
 		return v
 
-    @model_validator(mode="after")
-    def passwords_match(self) -> "DoctorSignupRequest":
-        if self.password != self.confirm_password:
-            raise ValueError("Passwords do not match.")
-        return self
+	@model_validator(mode="after")
+	def passwords_match(self) -> "DoctorSignupRequest":
+		if self.password != self.confirm_password:
+			raise ValueError("Passwords do not match.")
+		return self

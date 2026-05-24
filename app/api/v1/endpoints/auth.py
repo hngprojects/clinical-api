@@ -49,7 +49,7 @@ from app.services.auth import (
 	otp_ttl_seconds,
 	resend_otp,
 	revoke_refresh_token,
-	signup_doctor, 
+	signup_doctor,
 	signup_user,
 	verify_otp_for_user,
 )

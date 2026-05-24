@@ -5,7 +5,7 @@ from app.schemas.ai_interpretation import (
 	AIInterpretationUpdate,
 )
 from app.schemas.auth import (
-	DoctorSignupRequest, 
+	DoctorSignupRequest,
 	ForgotPasswordRequest,
 	GoogleAuthData,
 	LoginRequest,
