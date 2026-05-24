@@ -201,7 +201,7 @@ async def test_upload_passport_invalid_file_type(client):
 
 	fake_pdf = io.BytesIO(b"%PDF-fake")
 
-	with patch("app.services.doctor_profile.upload_medical_file"):
+	with patch("app.services.doctor_profile.upload_medical_file") as mock_upload:
 		response = await client.post(
 			f"{API}/doctors/me/profile/passport",
 			headers=headers,
@@ -209,6 +209,7 @@ async def test_upload_passport_invalid_file_type(client):
 		)
 
 	assert response.status_code == 400
+	mock_upload.assert_not_called()
 	await _delete_user(doctor.id)
 
 
@@ -288,7 +289,7 @@ async def test_upload_license_invalid_type(client):
 
 	fake_file = io.BytesIO(b"fake-data")
 
-	with patch("app.services.doctor_profile.upload_medical_file"):
+	with patch("app.services.doctor_profile.upload_medical_file") as mock_upload:
 		response = await client.post(
 			f"{API}/doctors/me/credentials/license",
 			headers=headers,
@@ -296,6 +297,7 @@ async def test_upload_license_invalid_type(client):
 		)
 
 	assert response.status_code == 400
+	mock_upload.assert_not_called()
 	await _delete_user(doctor.id)
 
 
