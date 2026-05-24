@@ -132,7 +132,7 @@ async def extract_lab_values(file_url: str) -> dict[str, Any]:
 			"Extract all laboratory test results from this document.",
 			data,
 			media_type,
-			max_tokens=1500,
+			max_tokens=4096,
 		)
 	except Exception as exc:
 		raise OCRExtractionError(f"LLM call failed: {exc}") from exc
@@ -145,6 +145,9 @@ async def extract_lab_values(file_url: str) -> dict[str, Any]:
 
 	if "tests" not in extracted or not isinstance(extracted["tests"], list):
 		raise OCRExtractionError("Model response missing 'tests' array")
+
+	if not extracted["tests"]:
+		raise OCRExtractionError("No lab test results found in document")
 
 	logger.info("[ocr] extracted %d tests from %s", len(extracted["tests"]), file_url)
 	return extracted
