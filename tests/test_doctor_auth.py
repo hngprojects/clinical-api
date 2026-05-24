@@ -1,3 +1,5 @@
+"""Doctor auth tests for signup, OTP, login, and role-based access."""
+
 from __future__ import annotations
 
 import uuid
@@ -55,7 +57,6 @@ async def _delete_user_by_email(email: str) -> None:
 # ── Signup ───────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.anyio
 async def test_doctor_signup_success(client):
     email = _unique_email()
     payload = {**_DOCTOR_PAYLOAD, "email": email}
@@ -85,7 +86,6 @@ async def test_doctor_signup_success(client):
     await _delete_user_by_email(email)
 
 
-@pytest.mark.anyio
 async def test_doctor_signup_duplicate_verified_email(client):
     email = _unique_email()
 
@@ -112,7 +112,6 @@ async def test_doctor_signup_duplicate_verified_email(client):
     await _delete_user_by_email(email)
 
 
-@pytest.mark.anyio
 async def test_doctor_signup_password_mismatch(client):
     payload = {
         **_DOCTOR_PAYLOAD,
@@ -123,7 +122,6 @@ async def test_doctor_signup_password_mismatch(client):
     assert response.status_code == 422
 
 
-@pytest.mark.anyio
 async def test_doctor_signup_missing_phone(client):
     payload = {k: v for k, v in _DOCTOR_PAYLOAD.items() if k != "phone_number"}
     payload["email"] = _unique_email()
@@ -131,7 +129,6 @@ async def test_doctor_signup_missing_phone(client):
     assert response.status_code == 422
 
 
-@pytest.mark.anyio
 async def test_doctor_signup_invalid_email(client):
     payload = {**_DOCTOR_PAYLOAD, "email": "not-an-email"}
     response = await client.post(f"{API}/auth/doctor/signup", json=payload)
@@ -141,7 +138,6 @@ async def test_doctor_signup_invalid_email(client):
 # ── OTP verify (shared endpoint) ─────────────────────────────────────────────
 
 
-@pytest.mark.anyio
 async def test_doctor_verify_otp_success(client):
     email = _unique_email()
 
@@ -175,7 +171,6 @@ async def test_doctor_verify_otp_success(client):
 # ── Login (shared endpoint) ───────────────────────────────────────────────────
 
 
-@pytest.mark.anyio
 async def test_doctor_login_success(client):
     email = _unique_email()
     password = "SecurePass123!"
@@ -206,7 +201,6 @@ async def test_doctor_login_success(client):
     await _delete_user_by_email(email)
 
 
-@pytest.mark.anyio
 async def test_doctor_login_wrong_password(client):
     email = _unique_email()
 
@@ -236,7 +230,6 @@ async def test_doctor_login_wrong_password(client):
 # ── Resend OTP (shared endpoint) ─────────────────────────────────────────────
 
 
-@pytest.mark.anyio
 async def test_doctor_resend_otp(client):
     email = _unique_email()
 
@@ -253,7 +246,6 @@ async def test_doctor_resend_otp(client):
 # ── Role guard ────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.anyio
 async def test_patient_cannot_access_doctor_only_route(client):
     """Verify DoctorUser dep blocks patients — test against /auth/me as a
     sanity check; replace with a real doctor-only route when one exists."""

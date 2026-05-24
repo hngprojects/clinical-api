@@ -4,6 +4,7 @@ from app.models.auth_session import AuthSession
 from app.models.base import Base
 from app.models.chat import Chat
 from app.models.contact import ContactMessage
+from app.models.doctor_profile import DoctorProfile, DoctorVerificationStatus
 from app.models.guest_session import GuestSession
 from app.models.lab_result import LabResult
 from app.models.medical_case import MedicalCase
@@ -19,6 +20,8 @@ __all__ = [
 	"AIInterpretation",
 	"AuthSession",
 	"ContactMessage",
+	"DoctorProfile",
+	"DoctorVerificationStatus",
 	"GuestSession",
 	"PasswordResetToken",
 	"TokenBlocklist",

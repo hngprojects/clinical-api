@@ -8,6 +8,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
+from app.models.doctor_profile import DoctorProfile
 
 if TYPE_CHECKING:
 	from app.models.chat import Chat
@@ -74,6 +75,10 @@ class User(Base):
 	migrated_guest_sessions: Mapped[list["GuestSession"]] = relationship(
 		foreign_keys="GuestSession.migrated_user_id",
 		back_populates="migrated_user",
+	)
+	doctor_profile: Mapped["DoctorProfile | None"] = relationship(
+		back_populates="user",
+		uselist=False,
 	)
 
 	@property

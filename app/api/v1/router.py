@@ -5,6 +5,7 @@ from app.api.v1.endpoints import (
 	auth,
 	chat,
 	contact,
+	doctors,
 	guest_cases,
 	guest_session,
 	health,
@@ -30,3 +31,4 @@ api_router.include_router(waitlist.router)
 api_router.include_router(contact.router)
 api_router.include_router(users.router)
 api_router.include_router(ws_chat.router)
+api_router.include_router(doctors.router)
