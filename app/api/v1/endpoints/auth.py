@@ -141,8 +141,15 @@ async def doctor_signup(
 	payload: DoctorSignupRequest,
 	user_repo: UserRepo,
 	otp_repo: OtpRepo,
+	ip_hash: ClientIpHash,
 ) -> SuccessResponse[OtpDispatchResponse]:
 	"""Register a new doctor account and send a 6-digit OTP for email verification."""
+	settings = get_settings()
+	await enforce_rate_limit(
+		key=f"rl:signup:{ip_hash}",
+		limit=settings.SIGNUP_RATE_LIMIT,
+		window_seconds=settings.SIGNUP_RATE_WINDOW_SECONDS,
+	)
 	user, code = await signup_doctor(user_repo, otp_repo, payload)
 	email_dispatched = False
 	try:
