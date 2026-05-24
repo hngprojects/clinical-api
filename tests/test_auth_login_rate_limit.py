@@ -52,7 +52,10 @@ async def test_login_rate_limits_after_repeated_failures(client: AsyncClient) ->
 		json={"email": email, "password": "WrongPassword!", "device_id": "web-1"},
 	)
 	assert blocked.status_code == 429
-	assert "failed login" in blocked.json()["message"].lower()
+	body = blocked.json()
+	assert body["status"] == "error"
+	assert body["message"] == "Too many failed login attempts. Please try again later."
+	assert body["errors"] is None
 
 
 @pytest.mark.asyncio(loop_scope="session")

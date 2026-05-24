@@ -75,8 +75,8 @@ class Settings(BaseSettings):
 
 	SIGNUP_RATE_LIMIT: int = 5
 	SIGNUP_RATE_WINDOW_SECONDS: int = 3600
-	LOGIN_FAILURE_RATE_LIMIT: int = 10
-	LOGIN_FAILURE_RATE_WINDOW_SECONDS: int = 900
+	LOGIN_FAILURE_RATE_LIMIT: int = Field(default=10, ge=1)
+	LOGIN_FAILURE_RATE_WINDOW_SECONDS: int = Field(default=900, ge=1)
 	# When true, use X-Forwarded-For (first hop) for guest IP hashing; only enable behind a trusted proxy.
 	TRUST_PROXY_FORWARDED_IP: bool = False
 
