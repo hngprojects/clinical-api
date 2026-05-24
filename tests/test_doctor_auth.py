@@ -148,12 +148,14 @@ async def test_doctor_verify_otp_success(client):
     # Signup first
     with patch("app.api.v1.endpoints.auth.send_otp_email_task") as mock_task:
         mock_task.delay.return_value = None
-        await client.post(f"{API}/auth/doctor/signup", json={**_DOCTOR_PAYLOAD, "email": email})
+        signup_resp = await client.post(f"{API}/auth/doctor/signup", json={**_DOCTOR_PAYLOAD, "email": email})
+    assert signup_resp.status_code == 201
 
     # Get user + OTP from DB
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(User).where(User.email == email))
         user = result.scalars().first()
+    assert user is not None
 
     otp = await _get_latest_otp(user.id)
     assert otp is not None
