@@ -12,6 +12,7 @@ from app.core.security import hash_password
 from app.db.session import AsyncSessionLocal
 from app.models.otp import OtpCode, OtpPurpose
 from app.models.user import User, UserRole
+from app.services.auth.tokens import create_access_token
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -247,9 +248,7 @@ async def test_doctor_resend_otp(client):
 
 
 async def test_patient_cannot_access_doctor_only_route(client):
-    """Verify DoctorUser dep blocks patients — test against /auth/me as a
-    sanity check; replace with a real doctor-only route when one exists."""
-    from app.services.auth.tokens import create_access_token
+    """Verify DoctorUser dep blocks patients on a protected doctor route."""
 
     async with AsyncSessionLocal() as session:
         patient = User(
@@ -269,10 +268,8 @@ async def test_patient_cannot_access_doctor_only_route(client):
     token, _ = create_access_token(patient.id)
     headers = {"Authorization": f"Bearer {token}"}
 
-    # /auth/me is not doctor-only, but the role field should read 'patient'
-    response = await client.get(f"{API}/auth/me", headers=headers)
-    assert response.status_code == 200
-    assert response.json()["data"]["role"] == "patient"
+    response = await client.get(f"{API}/doctors/me/profile", headers=headers)
+    assert response.status_code == 403
 
     async with AsyncSessionLocal() as session:
         u = await session.get(User, patient.id)
