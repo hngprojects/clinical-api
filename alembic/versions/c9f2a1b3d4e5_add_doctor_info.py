@@ -17,14 +17,13 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Add doctor to userrole enum
+    # 1. Add doctor to userrole enum safely
     op.execute("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'doctor'")
 
-    # Add phone_number to users (with check to prevent error if already exists)
-    # Using raw SQL is safer if you are worried about repeated runs
+    # 2. Add phone_number to users safely
     op.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_number VARCHAR")
 
-    # Create doctorverificationstatus enum with a safety check
+    # 3. Create doctorverificationstatus enum safely via PL/pgSQL
     op.execute(
         "DO $$ BEGIN "
         "IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'doctorverificationstatus') THEN "
@@ -33,7 +32,7 @@ def upgrade() -> None:
         "END $$;"
     )
 
-    # Create doctor_profiles table
+    # 4. Create doctor_profiles table
     op.create_table(
         "doctor_profiles",
         sa.Column("id", sa.UUID(), nullable=False),
@@ -47,8 +46,11 @@ def upgrade() -> None:
         sa.Column("medical_license_url", sa.String(), nullable=True),
         sa.Column(
             "verification_status",
-            sa.Enum("incomplete", "pending_review", "verified", "rejected",
-                    name="doctorverificationstatus"),
+            sa.Enum(
+                "incomplete", "pending_review", "verified", "rejected",
+                name="doctorverificationstatus",
+                create_type=False 
+            ),
             nullable=False,
         ),
         sa.Column("rejection_reason", sa.Text(), nullable=True),
