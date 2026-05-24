@@ -10,6 +10,7 @@ class UserBase(BaseModel):
 	email: EmailStr
 	first_name: str = Field(min_length=1, max_length=100)
 	last_name: str = Field(min_length=1, max_length=100)
+	phone_number: str | None = None
 	role: UserRole = UserRole.PATIENT
 	is_email_verified: bool = False
 	is_active: bool = True

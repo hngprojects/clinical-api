@@ -29,6 +29,7 @@ from app.core.security import hash_opaque_token, hash_password
 from app.models.otp import OtpPurpose
 from app.schemas.auth import (
 	AuthSessionResponse,
+	DoctorSignupRequest,
 	ForgotPasswordRequest,
 	LoginRequest,
 	OtpDispatchResponse,
@@ -48,6 +49,7 @@ from app.services.auth import (
 	otp_ttl_seconds,
 	resend_otp,
 	revoke_refresh_token,
+	signup_doctor, 
 	signup_user,
 	verify_otp_for_user,
 )
@@ -127,6 +129,43 @@ async def signup(
 			expires_in_seconds=otp_ttl_seconds(),
 		),
 	)
+
+# Doctor signup
+@router.post(
+    "/doctor/signup",
+    response_model=SuccessResponse[OtpDispatchResponse],
+    status_code=status.HTTP_201_CREATED,
+)
+async def doctor_signup(
+    payload: DoctorSignupRequest,
+    user_repo: UserRepo,
+    otp_repo: OtpRepo,
+) -> SuccessResponse[OtpDispatchResponse]:
+    """Register a new doctor account and send a 6-digit OTP for email verification."""
+    user, code = await signup_doctor(user_repo, otp_repo, payload)
+    email_dispatched = False
+    try:
+        send_otp_email_task.delay(
+            to_email=user.email,
+            first_name=user.first_name or user.email.split("@")[0],
+            code=code,
+            purpose=OtpPurpose.EMAIL_VERIFICATION.value,
+            is_doctor=True,           
+        )
+        email_dispatched = True
+    except Exception:
+        logger.exception("Failed to enqueue OTP email for %s", _mask_email(user.email))
+    return SuccessResponse(
+        message=(
+            "Verification code sent to your email."
+            if email_dispatched
+            else "Verification code created. If you do not receive an email, request a new code."
+        ),
+        data=OtpDispatchResponse(
+            email=user.email,
+            expires_in_seconds=otp_ttl_seconds(),
+        ),
+    )
 
 
 # Login

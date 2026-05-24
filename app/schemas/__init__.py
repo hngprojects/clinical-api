@@ -5,6 +5,7 @@ from app.schemas.ai_interpretation import (
 	AIInterpretationUpdate,
 )
 from app.schemas.auth import (
+	DoctorSignupRequest, 
 	ForgotPasswordRequest,
 	GoogleAuthData,
 	LoginRequest,
@@ -31,6 +32,7 @@ from app.schemas.waitlist import WaitlistCreate, WaitlistResponse
 
 __all__ = [
 	# Auth
+	"DoctorSignupRequest",
 	"GoogleAuthData",
 	"SignupRequest",
 	"LoginRequest",

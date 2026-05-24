@@ -7,7 +7,7 @@ from fastapi import Depends, Header, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import UnauthorizedError
+from app.core.exceptions import ForbiddenError, UnauthorizedError
 from app.core.guest_session import (
 	DEVICE_FINGERPRINT_HEADER,
 	get_client_ip,
@@ -16,7 +16,7 @@ from app.core.guest_session import (
 )
 from app.db.session import get_session
 from app.models.guest_session import GuestSession
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.repositories.ai_interpretation import AIInterpretationRepository
 from app.repositories.auth_session import AuthSessionRepository
 from app.repositories.chat import ChatRepository
@@ -172,6 +172,17 @@ async def get_current_user(
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+async def require_doctor(current_user: CurrentUser) -> User:
+	"""Raise 403 if the authenticated user is not a doctor."""
+	if current_user.role != UserRole.DOCTOR:
+		raise ForbiddenError("Doctor access required.")
+	return current_user
+
+
+DoctorUser = Annotated[User, Depends(require_doctor)]
+
 
 
 async def get_optional_user(

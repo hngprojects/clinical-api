@@ -21,6 +21,7 @@ class UserRole(str, enum.Enum):
 	"""Role of the user in the system."""
 
 	PATIENT = "patient"
+	DOCTOR = "doctor" 
 	ADMIN = "admin"
 
 
@@ -35,6 +36,7 @@ class User(Base):
 	google_id: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
 	first_name: Mapped[str] = mapped_column(String, nullable=False)
 	last_name: Mapped[str] = mapped_column(String, nullable=False)
+	phone_number: Mapped[str | None] = mapped_column(String, nullable=True)
 	role: Mapped[UserRole] = mapped_column(
 		Enum(UserRole, values_callable=lambda obj: [e.value for e in obj]),
 		nullable=False,

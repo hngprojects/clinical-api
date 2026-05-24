@@ -149,3 +149,43 @@ class GoogleAuthData(BaseModel):
 	refresh_token: str
 	token_type: str
 	user: UserResponse
+
+
+class DoctorSignupRequest(BaseModel):
+    """Signup form for doctors: name, phone, email, password.
+	
+	After account creation a 6-digit OTP is emailed for address verification.
+	"""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    first_name: str = Field(min_length=1, max_length=100)
+    last_name: str = Field(min_length=1, max_length=100)
+    phone_number: str = Field(min_length=7, max_length=20)
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=72)
+    confirm_password: str = Field(min_length=8, max_length=72)
+
+	@field_validator("password")
+	@classmethod
+	def password_strength(cls, v: str) -> str:
+		errors = []
+		if len(v) < 8:
+			errors.append("at least 8 characters")
+		if not any(c.isupper() for c in v):
+			errors.append("one uppercase letter")
+		if not any(c.islower() for c in v):
+			errors.append("one lowercase letter")
+		if not any(c.isdigit() for c in v):
+			errors.append("one number")
+		if not any(c in "!@#$%^&*()_+-=[]{}|;':\",./<>?" for c in v):
+			errors.append("one special character")
+		if errors:
+			raise ValueError("Password must contain " + ", ".join(errors) + ".")
+		return v
+
+    @model_validator(mode="after")
+    def passwords_match(self) -> "DoctorSignupRequest":
+        if self.password != self.confirm_password:
+            raise ValueError("Passwords do not match.")
+        return self

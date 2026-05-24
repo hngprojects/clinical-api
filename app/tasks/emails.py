@@ -23,12 +23,13 @@ def send_otp_email_task(
 	code: str,
 	purpose: str = "OTP",
 	first_name: str | None = None,
+	is_doctor: bool = False, 
 ) -> None:
 	try:
 		send_email_sync(
 			EMAIL_TYPE.OTP,
 			to_email,
-			{"code": code, "purpose": purpose, "first_name": first_name},
+			{"code": code, "purpose": purpose, "first_name": first_name, "is_doctor": is_doctor},
 		)
 	except Exception as exc:
 		logger.warning("OTP email task failed (retrying): %s", exc, exc_info=True)

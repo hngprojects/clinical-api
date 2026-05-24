@@ -3,6 +3,7 @@ from app.services.auth.account import (
 	authenticate_otp,
 	otp_ttl_seconds,
 	resend_otp,
+	signup_doctor,
 	signup_user,
 	start_email_change,
 	verify_email_change,
@@ -27,6 +28,7 @@ from app.services.auth_sessions import AuthSessionManager
 
 __all__ = [
 	"signup_user",
+	"signup_doctor",
 	"authenticate_credentials",
 	"authenticate_otp",
 	"resend_otp",
