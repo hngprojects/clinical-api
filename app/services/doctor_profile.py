@@ -36,6 +36,19 @@ async def save_professional_info(
 	await repo.refresh(profile)
 	return profile
 
+async def _read_with_size_limit(file: UploadFile, max_size: int) -> bytes:
+	chunks: list[bytes] = []
+	total = 0
+	while True:
+		chunk = await file.read(1024 * 1024)  # 1MB
+		if not chunk:
+			break
+		total += len(chunk)
+		if total > max_size:
+			raise BadRequestError("File size must be 5MB or smaller.")
+		chunks.append(chunk)
+	return b"".join(chunks)
+
 
 async def save_passport_photo(
 	repo: DoctorProfileRepository,
@@ -48,9 +61,7 @@ async def save_passport_photo(
 	if file.content_type not in _ALLOWED_IMAGE_TYPES:
 		raise BadRequestError("Passport photo must be JPEG, PNG, or WebP.")
 
-	contents = await file.read()
-	if len(contents) > _MAX_FILE_SIZE:
-		raise BadRequestError("File size must be 5MB or smaller.")
+	contents = await _read_with_size_limit(file, _MAX_FILE_SIZE)
 
 	meta = await upload_medical_file(
 		data=contents,
@@ -91,9 +102,7 @@ async def save_medical_license(
 	if file.content_type not in _ALLOWED_DOC_TYPES:
 		raise BadRequestError("Medical license must be PDF, JPEG, or PNG.")
 
-	contents = await file.read()
-	if len(contents) > _MAX_FILE_SIZE:
-		raise BadRequestError("File size must be 5MB or smaller.")
+	contents = await _read_with_size_limit(file, _MAX_FILE_SIZE)
 
 	meta = await upload_medical_file(
 		data=contents,
