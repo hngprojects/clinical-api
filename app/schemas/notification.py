@@ -35,6 +35,21 @@ class NotificationResponse(NotificationBase):
 	user_id: uuid.UUID
 	is_read: bool
 	read_at: datetime | None = None
+	delivered_at: datetime | None = None
 	created_at: datetime
 
 	model_config = ConfigDict(from_attributes=True)
+
+
+class NotificationPreferencesResponse(BaseModel):
+	"""Response schema for notification preferences."""
+
+	notify_on_complete: bool
+
+	model_config = ConfigDict(from_attributes=True)
+
+
+class NotificationPreferencesUpdate(BaseModel):
+	"""Request schema for notification preference updates."""
+
+	notify_on_complete: bool

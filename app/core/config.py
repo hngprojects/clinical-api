@@ -14,7 +14,7 @@ ENV_FILES = {
 
 class Settings(BaseSettings):
 	model_config = SettingsConfigDict(
-		env_file=ENV_FILES.get(APP_ENV, ".env.staging"),
+		env_file=ENV_FILES.get(APP_ENV, ".env"),
 		env_file_encoding="utf-8",
 		case_sensitive=True,
 		extra="ignore",
@@ -91,7 +91,7 @@ class Settings(BaseSettings):
 	OPENAI_MODEL: str = "gpt-4o-mini"
 
 	GEMINI_API_KEY: str = ""
-	GEMINI_MODEL: str = "gemini-2.0-flash"
+	GEMINI_MODEL: str = "gemini-3-flash-preview"
 
 	PIPELINE_TIMEOUT_SECONDS: int = 30
 
