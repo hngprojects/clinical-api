@@ -93,7 +93,7 @@ class Settings(BaseSettings):
 	OPENAI_MODEL: str = "gpt-4o-mini"
 
 	GEMINI_API_KEY: str = ""
-	GEMINI_MODEL: str = "gemini-2.0-flash"
+	GEMINI_MODEL: str = "gemini-3-flash-preview"
 
 	PIPELINE_TIMEOUT_SECONDS: int = 30
 
