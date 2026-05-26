@@ -17,11 +17,13 @@ class TokenBlocklistRepository:
 		self,
 		*,
 		jti: str,
-		user_id: UUID,
+		user_id: UUID | None,
 		expires_at: datetime,
 	) -> None:
 		entry = TokenBlocklist(jti=jti, user_id=user_id, expires_at=expires_at)
 		self._session.add(entry)
+
+	async def commit(self) -> None:
 		await self._session.commit()
 
 	async def is_revoked(self, jti: str) -> bool:

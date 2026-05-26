@@ -1,10 +1,13 @@
 from app.services.auth.account import (
 	authenticate_credentials,
 	authenticate_otp,
+	delete_account,
 	otp_ttl_seconds,
 	resend_otp,
 	signup_user,
 	start_email_change,
+	update_password,
+	update_profile,
 	verify_email_change,
 )
 from app.services.auth.otp import (
@@ -33,6 +36,9 @@ __all__ = [
 	"start_email_change",
 	"verify_email_change",
 	"otp_ttl_seconds",
+	"update_profile",
+	"update_password",
+	"delete_account",
 	"create_otp_for_user",
 	"verify_otp_for_user",
 	"create_password_reset",

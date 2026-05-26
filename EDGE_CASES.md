@@ -76,7 +76,7 @@ This document lists the important edge cases discovered while implementing the S
 
 3) Duplicate delivery / idempotency
 - Problem: Pipeline might attempt to create the same logical notification multiple times (retries, race conditions
-- Handling: Database-level uniqueness constraint (user, medical_case, type) plus repository idempotent lookup `get_by_user_case_and_type`. Pipeline persists the notification before publishing; repository returns existing record if present.
+- Handling: Database-level uniqueness constraint (user, medical_case, type) plus repository idempotent lookup `get_by_user_case_and_type`. Pipeline persists the notification before publishing; reposit
 ).
 - Risk: Users seeing duplicate notifications; event bus receiving multiple publishes for the same logical event.
 4) Preference toggling (notify_on_complete)
@@ -87,7 +87,7 @@ This document lists the important edge cases discovered while implementing the S
 5) Live vs Replay race
 - Problem: A notification might be replayed from DB at connection time while a live event arrives via EventBus almost simultaneously.
 - Risk: Duplicate delivery to client.
-- Handling: Replay uses chronological ordering and marks `delivered_at` when replayed. Live event handler checks whether notification has already been marked `delivered_at` (or uses seen set based on UUID) to avoid re-sending the same notification.
+- Handling: Replay uses chronological ordering and marks `delivered_at` when replayed. Live event handler checks whether notification has already been marked `delivered_at` (or uses seen set based on 
 
 6) Keepalive and proxy timeouts
 - Problem: Proxies and load balancers may close idle connections.
@@ -99,7 +99,7 @@ This document lists the important edge cases discovered while implementing the S
 
 8) Large payloads and memory
 - Problem: Large notifications or bursts might cause memory pressure when buffering.
-- Handling: SSE writes events directly via streaming generator without buffering large batches. Event payloads are kept reasonably small; if a notification has large `data`, it is truncated or summarized before publishing (pipeline/service level guidance).
+- Handling: SSE writes events directly via streaming generator without buffering large batches. Event payloads are kept reasonably small; if a notification has large `data`, it is truncated or summari
 
 9) Invalid event types from EventBus
 - Problem: EventBus payloads may be malformed or contain unknown event types.
