@@ -75,6 +75,8 @@ class Settings(BaseSettings):
 
 	SIGNUP_RATE_LIMIT: int = 5
 	SIGNUP_RATE_WINDOW_SECONDS: int = 3600
+	LOGIN_FAILURE_RATE_LIMIT: int = Field(default=10, ge=1)
+	LOGIN_FAILURE_RATE_WINDOW_SECONDS: int = Field(default=900, ge=1)
 	# When true, use X-Forwarded-For (first hop) for guest IP hashing; only enable behind a trusted proxy.
 	TRUST_PROXY_FORWARDED_IP: bool = False
 
@@ -91,7 +93,7 @@ class Settings(BaseSettings):
 	OPENAI_MODEL: str = "gpt-4o-mini"
 
 	GEMINI_API_KEY: str = ""
-	GEMINI_MODEL: str = "gemini-2.0-flash"
+	GEMINI_MODEL: str = "gemini-3-flash-preview"
 
 	PIPELINE_TIMEOUT_SECONDS: int = 30
 

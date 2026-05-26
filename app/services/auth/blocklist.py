@@ -8,7 +8,7 @@ async def revoke_token(
 	blocklist_repo: TokenBlocklistRepository,
 	*,
 	jti: str,
-	user_id: UUID,
+	user_id: UUID | None,
 	expires_at: datetime,
 ) -> None:
 	"""Insert a revoked token record and commit the transaction."""
