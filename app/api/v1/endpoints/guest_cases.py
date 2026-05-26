@@ -31,8 +31,5 @@ async def list_guest_cases(
 	titles = await get_case_titles(cases, lab_repo)
 	return SuccessResponse(
 		message="OK",
-		data=[
-			MedicalCaseResponse.model_validate(c).model_copy(update={"title": titles.get(c.id)})
-			for c in cases
-		],
+		data=[MedicalCaseResponse.model_validate(c).model_copy(update={"title": titles.get(c.id)}) for c in cases],
 	)
