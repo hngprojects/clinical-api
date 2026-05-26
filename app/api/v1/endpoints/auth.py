@@ -358,6 +358,7 @@ async def logout(
 	)
 	await auth_manager.revoke_by_refresh_token(refresh_token)
 	await revoke_refresh_token(refresh_token, blocklist_repo)
+	await blocklist_repo.commit()
 	return SuccessResponse(message="Logged out successfully.")
 
 

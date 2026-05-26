@@ -145,7 +145,7 @@ def generate_pdf(
 	styles = _get_styles()
 	story = []
 
-	# ── Header ──────────────────────────────────────────────────────────────
+	# ── Header ─────────────────────────────────────────────────────────────
 	patient_name = escape(f"{user.first_name} {user.last_name}".strip()) if user else "Guest"
 	upload_date = (
 		lab_result.created_at.strftime("%B %d, %Y at %H:%M UTC")
