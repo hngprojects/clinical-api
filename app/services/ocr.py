@@ -143,10 +143,15 @@ async def extract_lab_values(file_url: str) -> dict[str, Any]:
 		raise OCRExtractionError(f"LLM call failed: {exc}") from exc
 
 	try:
-		extracted: dict[str, Any] = json.loads(raw_text)
+		parsedJSON = json.loads(raw_text)
 	except json.JSONDecodeError as exc:
-		logger.error("[ocr] non-JSON response from model: %s", raw_text[:200])
 		raise OCRExtractionError("Model returned non-JSON response") from exc
+
+	if not isinstance(parsedJSON, dict):
+		logger.error("[ocr] model returned invalid JSON (not an object): %s", raw_text[:200])
+		raise OCRExtractionError("Model returned JSON that is not an object")
+
+	extracted: dict[str, Any] = parsedJSON
 
 	if "tests" not in extracted or not isinstance(extracted["tests"], list):
 		raise OCRExtractionError("Model response missing 'tests' array")
