@@ -16,7 +16,7 @@ from app.core.responses import SuccessResponse
 from app.schemas.ai_interpretation import AIInterpretationResponse
 from app.schemas.chat import ChatResponse
 from app.schemas.lab_result import LabResultResponse
-from app.schemas.medical_case import MedicalCaseDetailResponse, MedicalCaseResponse, MedicalCaseUpdate
+from app.schemas.medical_case import MedicalCaseDetailResponse, MedicalCaseResponse
 from app.schemas.pipeline_audit_log import PipelineAuditLogResponse
 from app.services.medical_case import (
 	complete_case,
@@ -25,7 +25,6 @@ from app.services.medical_case import (
 	get_case_full,
 	get_case_title,
 	list_cases_for_user,
-	update_case,
 )
 
 router = APIRouter(prefix="/cases", tags=["medical-cases"])
