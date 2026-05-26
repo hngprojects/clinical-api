@@ -25,7 +25,7 @@ async def join(
 	"""Add an email to the waitlist."""
 	entry = await join_waitlist(waitlist_repo, payload)
 	try:
-		send_waitlist_email_task.delay(to_email=entry.email, name=None)
+		send_waitlist_email_task.delay(to_email=entry.email, first_name=payload.first_name)
 	except Exception:
 		logger.exception("Failed to enqueue waitlist email for %s", entry.email)
 	return SuccessResponse(

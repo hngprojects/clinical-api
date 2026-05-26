@@ -8,6 +8,7 @@ class WaitlistCreate(BaseModel):
 	"""Schema for joining the waitlist."""
 
 	email: EmailStr
+	first_name: str | None = None
 
 
 class WaitlistResponse(BaseModel):
