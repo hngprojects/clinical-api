@@ -1,10 +1,18 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 from app.models.auth_session import AuthSession
 from app.schemas.user import UserResponse
+
+
+def _validate_person_name(value: str, *, label: str) -> str:
+	if not value:
+		raise ValueError(f"{label} cannot be empty.")
+	if len(value) > 100:
+		raise ValueError(f"{label} must be 100 characters or fewer.")
+	return value
 
 
 class SignupRequest(BaseModel):
@@ -15,11 +23,40 @@ class SignupRequest(BaseModel):
 
 	model_config = ConfigDict(str_strip_whitespace=True)
 
-	first_name: str = Field(min_length=1, max_length=100)
-	last_name: str = Field(min_length=1, max_length=100)
+	first_name: str
+	last_name: str
+
+	@field_validator("first_name")
+	@classmethod
+	def validate_first_name(cls, v: str) -> str:
+		return _validate_person_name(v, label="First name")
+
+	@field_validator("last_name")
+	@classmethod
+	def validate_last_name(cls, v: str) -> str:
+		return _validate_person_name(v, label="Last name")
+
 	email: EmailStr
 	password: str = Field(min_length=8, max_length=72)
 	confirm_password: str = Field(min_length=8, max_length=72)
+
+	@field_validator("password")
+	@classmethod
+	def password_strength(cls, v: str) -> str:
+		errors = []
+		if len(v) < 8:
+			errors.append("at least 8 characters")
+		if not any(c.isupper() for c in v):
+			errors.append("one uppercase letter")
+		if not any(c.islower() for c in v):
+			errors.append("one lowercase letter")
+		if not any(c.isdigit() for c in v):
+			errors.append("one number")
+		if not any(c in "!@#$%^&*()_+-=[]{}|;':\",./<>?" for c in v):
+			errors.append("one special character")
+		if errors:
+			raise ValueError("Password must contain " + ", ".join(errors) + ".")
+		return v
 
 	@model_validator(mode="after")
 	def passwords_match(self) -> "SignupRequest":

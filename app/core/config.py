@@ -14,7 +14,7 @@ ENV_FILES = {
 
 class Settings(BaseSettings):
 	model_config = SettingsConfigDict(
-		env_file=ENV_FILES.get(APP_ENV, ".env.staging"),
+		env_file=ENV_FILES.get(APP_ENV, ".env"),
 		env_file_encoding="utf-8",
 		case_sensitive=True,
 		extra="ignore",
@@ -72,6 +72,11 @@ class Settings(BaseSettings):
 	GUEST_SESSION_RETENTION_DAYS: int = 7
 	GUEST_SESSION_CREATE_RATE_LIMIT: int = 30
 	GUEST_SESSION_CREATE_RATE_WINDOW_SECONDS: int = 3600
+
+	SIGNUP_RATE_LIMIT: int = 5
+	SIGNUP_RATE_WINDOW_SECONDS: int = 3600
+	LOGIN_FAILURE_RATE_LIMIT: int = Field(default=10, ge=1)
+	LOGIN_FAILURE_RATE_WINDOW_SECONDS: int = Field(default=900, ge=1)
 	# When true, use X-Forwarded-For (first hop) for guest IP hashing; only enable behind a trusted proxy.
 	TRUST_PROXY_FORWARDED_IP: bool = False
 
@@ -88,7 +93,7 @@ class Settings(BaseSettings):
 	OPENAI_MODEL: str = "gpt-4o-mini"
 
 	GEMINI_API_KEY: str = ""
-	GEMINI_MODEL: str = "gemini-2.0-flash"
+	GEMINI_MODEL: str = "gemini-3-flash-preview"
 
 	PIPELINE_TIMEOUT_SECONDS: int = 30
 

@@ -1,8 +1,8 @@
-"""Final table for MVP
+"""Upgrade tables for MVP - notification preferences
 
-Revision ID: da75221c0906
+Revision ID: b705fe90560f
 Revises: 
-Create Date: 2026-05-19 21:02:53.841604
+Create Date: 2026-05-22 09:41:10.582139
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = 'da75221c0906'
+revision: str = 'b705fe90560f'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -40,6 +40,7 @@ def upgrade() -> None:
     sa.Column('last_name', sa.String(), nullable=False),
     sa.Column('role', sa.Enum('patient', 'admin', name='userrole'), nullable=False),
     sa.Column('is_email_verified', sa.Boolean(), nullable=False),
+    sa.Column('notify_on_complete', sa.Boolean(), nullable=False),
     sa.Column('is_active', sa.Boolean(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('last_login_at', sa.DateTime(timezone=True), nullable=True),
@@ -91,7 +92,7 @@ def upgrade() -> None:
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('user_id', sa.UUID(), nullable=False),
     sa.Column('code_hash', sa.String(), nullable=False),
-    sa.Column('purpose', sa.Enum('email_verification', name='otppurpose'), nullable=False),
+    sa.Column('purpose', sa.Enum('email_verification', 'reset_password', name='otppurpose'), nullable=False),
     sa.Column('attempts', sa.Integer(), nullable=False),
     sa.Column('expires_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('consumed_at', sa.DateTime(timezone=True), nullable=True),
@@ -184,10 +185,12 @@ def upgrade() -> None:
     sa.Column('data', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.Column('is_read', sa.Boolean(), nullable=False),
     sa.Column('read_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('delivered_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['medical_case_id'], ['medical_cases.id'], ondelete='SET NULL'),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('user_id', 'medical_case_id', 'type', name='uq_notification_user_case_type')
     )
     op.create_index(op.f('ix_notification_medical_case_id'), 'notification', ['medical_case_id'], unique=False)
     op.create_index(op.f('ix_notification_user_id'), 'notification', ['user_id'], unique=False)

@@ -1,6 +1,5 @@
 import json
 import logging
-from threading import Lock
 from uuid import UUID
 
 from fastapi import WebSocket
@@ -13,37 +12,36 @@ MAX_WEBSOCKET_MESSAGE_BYTES = 256_000
 class ConnectionRegistry:
 	def __init__(self):
 		self.active_connections: dict[UUID, list[WebSocket]] = {}
-		self._lock = Lock()
+		# Track SSE streams separately (simple counter per user)
+		self.active_streams: dict[UUID, int] = {}
 
 	def connect(self, user_id: UUID, websocket: WebSocket) -> None:
-		with self._lock:
-			if user_id not in self.active_connections:
-				self.active_connections[user_id] = []
-			self.active_connections[user_id].append(websocket)
-			logger.debug(
-				"WebSocket connected",
-				extra={
-					"user_id": str(user_id),
-					"connection_count": len(self.active_connections[user_id]),
-				},
-			)
+		if user_id not in self.active_connections:
+			self.active_connections[user_id] = []
+		self.active_connections[user_id].append(websocket)
+		logger.debug(
+			"WebSocket connected",
+			extra={
+				"user_id": str(user_id),
+				"connection_count": len(self.active_connections[user_id]),
+			},
+		)
 
 	def disconnect(self, user_id: UUID, websocket: WebSocket) -> None:
-		with self._lock:
-			if user_id in self.active_connections:
-				try:
-					self.active_connections[user_id].remove(websocket)
-					if not self.active_connections[user_id]:
-						del self.active_connections[user_id]
-					logger.debug(
-						"WebSocket disconnected",
-						extra={"user_id": str(user_id)},
-					)
-				except ValueError:
-					logger.warning(
-						"WebSocket not found in registry",
-						extra={"user_id": str(user_id)},
-					)
+		if user_id in self.active_connections:
+			try:
+				self.active_connections[user_id].remove(websocket)
+				if not self.active_connections[user_id]:
+					del self.active_connections[user_id]
+				logger.debug(
+					"WebSocket disconnected",
+					extra={"user_id": str(user_id)},
+				)
+			except ValueError:
+				logger.warning(
+					"WebSocket not found in registry",
+					extra={"user_id": str(user_id)},
+				)
 
 	async def broadcast(self, user_id: UUID, message: dict) -> None:
 		message_json = json.dumps(message)
@@ -51,8 +49,9 @@ class ConnectionRegistry:
 			logger.warning("WebSocket message too large", extra={"user_id": str(user_id)})
 			return
 
-		with self._lock:
-			connections = self.active_connections.get(user_id, [])[:]
+		# Take a snapshot of the current connections to avoid mutating
+		# the list while iterating if disconnect() is called during broadcast.
+		connections = self.active_connections.get(user_id, [])[:]
 		if not connections:
 			return
 
@@ -72,6 +71,20 @@ class ConnectionRegistry:
 
 	def get_connection_count(self, user_id: UUID) -> int:
 		return len(self.active_connections.get(user_id, []))
+
+	def get_stream_count(self, user_id: UUID) -> int:
+		return int(self.active_streams.get(user_id, 0))
+
+	def register_stream(self, user_id: UUID) -> None:
+		count = int(self.active_streams.get(user_id, 0))
+		self.active_streams[user_id] = count + 1
+
+	def unregister_stream(self, user_id: UUID) -> None:
+		if user_id in self.active_streams:
+			if self.active_streams[user_id] <= 1:
+				del self.active_streams[user_id]
+			else:
+				self.active_streams[user_id] = self.active_streams[user_id] - 1
 
 	def get_total_connections(self) -> int:
 		return sum(len(conns) for conns in self.active_connections.values())

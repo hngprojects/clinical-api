@@ -44,6 +44,14 @@ class _FakeRedis:
 	async def expire(self, key: str, ttl: int) -> bool:  # noqa: ARG002
 		return True
 
+	async def get(self, key: str) -> str | None:
+		if key not in self._counts:
+			return None
+		return str(self._counts[key])
+
+	async def delete(self, key: str) -> int:
+		return 1 if self._counts.pop(key, None) is not None else 0
+
 
 @pytest.fixture(autouse=True)
 def mock_redis_rate_limit(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -102,9 +110,6 @@ async def setup_database(request: pytest.FixtureRequest):
     async with nullpool_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield
-    async with nullpool_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-    await nullpool_engine.dispose()
 
 
 

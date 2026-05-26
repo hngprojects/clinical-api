@@ -22,7 +22,13 @@ from app.api.deps import (
 	bearer_scheme,
 )
 from app.core.config import get_settings
-from app.core.exceptions import UnauthorizedError
+from app.core.exceptions import ForbiddenError, NotFoundError, UnauthorizedError
+from app.core.rate_limit import (
+	assert_login_not_rate_limited,
+	clear_login_failures,
+	enforce_rate_limit,
+	record_login_failure,
+)
 from app.core.responses import SuccessResponse
 from app.core.security import hash_opaque_token, hash_password
 from app.models.otp import OtpPurpose
@@ -94,8 +100,15 @@ async def signup(
 	payload: SignupRequest,
 	user_repo: UserRepo,
 	otp_repo: OtpRepo,
+	ip_hash: ClientIpHash,
 ) -> SuccessResponse[OtpDispatchResponse]:
 	"""Register a new user and send a 6-digit OTP for email verification."""
+	settings = get_settings()
+	await enforce_rate_limit(
+		key=f"rl:signup:{ip_hash}",
+		limit=settings.SIGNUP_RATE_LIMIT,
+		window_seconds=settings.SIGNUP_RATE_WINDOW_SECONDS,
+	)
 	user, code = await signup_user(user_repo, otp_repo, payload)
 	email_dispatched = False
 	try:
@@ -138,7 +151,13 @@ async def login(
 
 	The account must have a verified email before login is permitted.
 	"""
-	user = await authenticate_credentials(user_repo, email=payload.email, password=payload.password)
+	await assert_login_not_rate_limited(ip_hash)
+	try:
+		user = await authenticate_credentials(user_repo, email=payload.email, password=payload.password)
+	except (UnauthorizedError, NotFoundError, ForbiddenError):
+		await record_login_failure(ip_hash)
+		raise
+	await clear_login_failures(ip_hash)
 	issue = await auth_manager.create(
 		user.id,
 		payload.device_id,
