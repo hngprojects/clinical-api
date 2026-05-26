@@ -30,6 +30,7 @@ class MedicalCaseUpdate(BaseModel):
 	"""Schema for updating a medical case."""
 
 	status: MedicalCaseStatus | None = None
+	title: str | None = None
 	completed_at: datetime | None = None
 
 

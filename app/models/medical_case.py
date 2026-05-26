@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum, ForeignKey
+from sqlalchemy import DateTime, Enum, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -43,6 +43,7 @@ class MedicalCase(Base):
 	status: Mapped[MedicalCaseStatus] = mapped_column(
 		Enum(MedicalCaseStatus, values_callable=lambda obj: [e.value for e in obj]), nullable=False
 	)
+	title: Mapped[str | None] = mapped_column(String, nullable=True)
 	created_at: Mapped[datetime] = mapped_column(
 		DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
 	)

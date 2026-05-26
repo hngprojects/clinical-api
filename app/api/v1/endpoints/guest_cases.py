@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Query
 
-from app.api.deps import CurrentGuestSessionDep, GuestSessionManagerDep, MedicalCaseRepo
+from app.api.deps import CurrentGuestSessionDep, GuestSessionManagerDep, LabResultRepo, MedicalCaseRepo
 from app.core.responses import SuccessResponse
 from app.schemas.medical_case import MedicalCaseResponse
-from app.services.medical_case import list_cases_for_guest_session
+from app.services.medical_case import get_case_title, list_cases_for_guest_session
 
 router = APIRouter(prefix="/guest/cases", tags=["guest-sessions"])
 
@@ -16,6 +16,7 @@ async def list_guest_cases(
 	guest_session: CurrentGuestSessionDep,
 	manager: GuestSessionManagerDep,
 	case_repo: MedicalCaseRepo,
+	lab_repo: LabResultRepo,
 	offset: int = Query(0, ge=0),
 	limit: int = Query(50, ge=1, le=100),
 ) -> SuccessResponse[list[MedicalCaseResponse]]:
@@ -29,5 +30,8 @@ async def list_guest_cases(
 	)
 	return SuccessResponse(
 		message="OK",
-		data=[MedicalCaseResponse.model_validate(c) for c in cases],
+		data=[
+			MedicalCaseResponse.model_validate(c).model_copy(update={"title": await get_case_title(c, lab_repo)})
+			for c in cases
+		],
 	)

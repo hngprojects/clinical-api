@@ -165,6 +165,9 @@ async def update_case(
 	case = await get_case(case_repo, case_id, user=user)
 	if payload.status is not None:
 		case.status = payload.status
+	if payload.title is not None:
+		title = payload.title.strip()
+		case.title = title or None
 	if payload.completed_at is not None:
 		case.completed_at = payload.completed_at
 	await case_repo.commit()
@@ -188,11 +191,15 @@ async def complete_case(
 
 
 async def get_case_title(
+	case: MedicalCase,
 	lab_repo: LabResultRepository,
-	case_id: UUID,
 ) -> str | None:
-	"""Return the title from the earliest uploaded lab result for a case."""
-	first_lab_result = await lab_repo.first_by_case(case_id)
+	"""Return the case title, preferring a manual override over OCR data. If the case has a title, return it. Otherwise, attempt to extract a title from the earliest lab result's OCR data."""
+	if isinstance(case.title, str):
+		title = case.title.strip()
+		if title:
+			return title
+	first_lab_result = await lab_repo.first_by_case(case.id)
 	if first_lab_result is None or not isinstance(first_lab_result.extracted_values, dict):
 		return None
 	title = first_lab_result.extracted_values.get("title")
