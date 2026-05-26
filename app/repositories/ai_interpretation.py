@@ -34,6 +34,18 @@ class AIInterpretationRepository(BaseRepository[AIInterpretation]):
 		)
 		return result.scalar_one_or_none()
 
+	async def get_latest_completed_for_case(self, medical_case_id: UUID) -> AIInterpretation | None:
+		result = await self._session.execute(
+			select(AIInterpretation)
+			.where(
+				AIInterpretation.medical_case_id == medical_case_id,
+				AIInterpretation.status == InterpretationStatus.COMPLETE,
+			)
+			.order_by(AIInterpretation.generated_at.desc())
+			.limit(1)
+		)
+		return result.scalar_one_or_none()
+
 	async def update_status(
 		self,
 		interp_id: UUID,
