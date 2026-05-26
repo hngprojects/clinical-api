@@ -1,3 +1,4 @@
+from typing import Sequence
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -17,6 +18,33 @@ class LabResultRepository(BaseRepository[LabResult]):
 			.limit(1)
 		)
 		return result.scalar_one_or_none()
+
+	async def first_by_case_ids(self, medical_case_ids: Sequence[UUID]) -> dict[UUID, LabResult]:
+		if not medical_case_ids:
+			return {}
+
+		ranked_results = (
+			select(
+				LabResult.id.label("lab_result_id"),
+				LabResult.medical_case_id.label("medical_case_id"),
+				func.row_number()
+				.over(
+					partition_by=LabResult.medical_case_id,
+					order_by=(LabResult.created_at.asc(), LabResult.id.asc()),
+				)
+				.label("row_number"),
+			)
+			.where(LabResult.medical_case_id.in_(medical_case_ids))
+			.subquery()
+		)
+
+		result = await self._session.execute(
+			select(ranked_results.c.medical_case_id, LabResult)
+			.select_from(ranked_results)
+			.join(LabResult, LabResult.id == ranked_results.c.lab_result_id)
+			.where(ranked_results.c.row_number == 1)
+		)
+		return {medical_case_id: lab_result for medical_case_id, lab_result in result.all()}
 
 	async def list_by_case(
 		self,

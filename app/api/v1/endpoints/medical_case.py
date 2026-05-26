@@ -24,6 +24,7 @@ from app.services.medical_case import (
 	get_case,
 	get_case_full,
 	get_case_title,
+	get_case_titles,
 	list_cases_for_user,
 )
 
@@ -65,9 +66,10 @@ async def list_mine(
 		offset=offset,
 		limit=limit,
 	)
+	titles = await get_case_titles(cases, lab_repo)
 	responses = [
 		MedicalCaseResponse.model_validate(case).model_copy(
-			update={"title": await get_case_title(case, lab_repo)},
+			update={"title": titles.get(case.id)},
 		)
 		for case in cases
 	]
