@@ -65,9 +65,9 @@ class User(Base):
 		nullable=True,
 	)
 
-	medical_cases: Mapped[list["MedicalCase"]] = relationship(back_populates="user")
-	chats: Mapped[list["Chat"]] = relationship(back_populates="user")
-	notifications: Mapped[list["Notification"]] = relationship(back_populates="user")
+	medical_cases: Mapped[list["MedicalCase"]] = relationship(back_populates="user", passive_deletes=True)
+	chats: Mapped[list["Chat"]] = relationship(back_populates="user", passive_deletes=True)
+	notifications: Mapped[list["Notification"]] = relationship(back_populates="user", passive_deletes=True)
 	otp_codes: Mapped[list["OtpCode"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 	migrated_guest_sessions: Mapped[list["GuestSession"]] = relationship(
 		foreign_keys="GuestSession.migrated_user_id",

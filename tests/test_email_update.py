@@ -119,7 +119,7 @@ async def test_request_email_update_conflict_when_email_taken(client) -> None:
             )
 
         assert response.status_code == 409
-        assert response.json()["message"] == "Email already in use"
+        assert response.json()["message"] == "This email is already linked to another account."
         mock_delay.assert_not_called()
     finally:
         await _delete_user(user.id)
