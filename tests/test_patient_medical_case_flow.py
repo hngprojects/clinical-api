@@ -137,11 +137,22 @@ async def test_patient_case_list_includes_case_before_opening_full(client, test_
 	assert case_resp.status_code == 201
 	case_id = case_resp.json()["data"]["id"]
 
+	update_resp = await client.patch(
+		f"{API}/cases/{case_id}",
+		json={"title": "Blood Panel"},
+		headers=auth_headers,
+	)
+	assert update_resp.status_code == 200
+	assert update_resp.json()["data"]["title"] == "Blood Panel"
+
 	list_resp = await client.get(f"{API}/cases", headers=auth_headers)
 	assert list_resp.status_code == 200
-	ids = [row["id"] for row in list_resp.json()["data"]]
-	assert case_id in ids
+	rows = list_resp.json()["data"]
+	case_row = next(row for row in rows if row["id"] == case_id)
+	assert case_row["title"] == "Blood Panel"
 
 	full_resp = await client.get(f"{API}/cases/{case_id}/full", headers=auth_headers)
 	assert full_resp.status_code == 200
-	assert full_resp.json()["data"]["case"]["id"] == case_id
+	full_case = full_resp.json()["data"]["case"]
+	assert full_case["id"] == case_id
+	assert full_case["title"] == "Blood Panel"
