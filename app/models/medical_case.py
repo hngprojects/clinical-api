@@ -50,7 +50,9 @@ class MedicalCase(Base):
 
 	user: Mapped["User"] = relationship(back_populates="medical_cases")
 	guest_session: Mapped["GuestSession | None"] = relationship(back_populates="medical_cases")
-	lab_results: Mapped[list["LabResult"]] = relationship(back_populates="medical_case")
-	ai_interpretations: Mapped[list["AIInterpretation"]] = relationship(back_populates="medical_case")
-	chats: Mapped[list["Chat"]] = relationship(back_populates="medical_case")
-	notifications: Mapped[list["Notification"]] = relationship(back_populates="medical_case")
+	lab_results: Mapped[list["LabResult"]] = relationship(back_populates="medical_case", passive_deletes=True)
+	ai_interpretations: Mapped[list["AIInterpretation"]] = relationship(
+		back_populates="medical_case", passive_deletes=True
+	)
+	chats: Mapped[list["Chat"]] = relationship(back_populates="medical_case", passive_deletes=True)
+	notifications: Mapped[list["Notification"]] = relationship(back_populates="medical_case", passive_deletes=True)
