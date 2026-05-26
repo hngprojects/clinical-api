@@ -18,6 +18,20 @@ from app.services.guest import resolve_guest_session_id, touch_guest_session
 from app.services.guest_sessions import GuestSessionManager
 
 
+def _normalize_title(title: str | None) -> str | None:
+	if not isinstance(title, str):
+		return None
+	title = title.strip()
+	return title or None
+
+
+def _title_from_lab_result(lab_result: LabResult | None) -> str | None:
+	if lab_result is None or not isinstance(lab_result.extracted_values, dict):
+		return None
+	title = lab_result.extracted_values.get("title")
+	return _normalize_title(title if isinstance(title, str) else None)
+
+
 @dataclass(frozen=True)
 class CaseFullDetail:
 	"""Case row plus related entities for history/detail views."""
@@ -126,6 +140,43 @@ async def get_case_full(
 	)
 
 
+async def get_case_titles(
+	cases: list[MedicalCase],
+	lab_repo: LabResultRepository,
+) -> dict[UUID, str | None]:
+	"""Return resolved titles for a page of cases.
+
+	Manual case titles take precedence. For cases without a manual title, the
+	earliest lab result title is used, falling back to "Laboratory Report" when
+	the lab result exists but the OCR payload lacks a usable title.
+	"""
+	titles: dict[UUID, str | None] = {}
+	case_ids_needing_lab_titles: list[UUID] = []
+
+	for case in cases:
+		case_title = _normalize_title(case.title)
+		if case_title is not None:
+			titles[case.id] = case_title
+			continue
+		case_ids_needing_lab_titles.append(case.id)
+
+	if not case_ids_needing_lab_titles:
+		return titles
+
+	first_lab_results = await lab_repo.first_by_case_ids(case_ids_needing_lab_titles)
+	for case_id in case_ids_needing_lab_titles:
+		lab_title = _title_from_lab_result(first_lab_results.get(case_id))
+		if lab_title is not None:
+			titles[case_id] = lab_title
+			continue
+		if case_id in first_lab_results:
+			titles[case_id] = "Laboratory Report"
+		else:
+			titles[case_id] = None
+
+	return titles
+
+
 async def list_cases_for_user(
 	case_repo: MedicalCaseRepository,
 	user_id: UUID,
@@ -165,6 +216,9 @@ async def update_case(
 	case = await get_case(case_repo, case_id, user=user)
 	if payload.status is not None:
 		case.status = payload.status
+	if payload.title is not None:
+		title = payload.title.strip()
+		case.title = title or None
 	if payload.completed_at is not None:
 		case.completed_at = payload.completed_at
 	await case_repo.commit()
@@ -185,6 +239,23 @@ async def complete_case(
 	await case_repo.commit()
 	await case_repo.refresh(case)
 	return case
+
+
+async def get_case_title(
+	case: MedicalCase,
+	lab_repo: LabResultRepository,
+) -> str | None:
+	"""Return the case title, preferring manual override over OCR data."""
+	title = _normalize_title(case.title)
+	if title is not None:
+		return title
+	first_lab_result = await lab_repo.first_by_case(case.id)
+	if first_lab_result is None:
+		return None
+	title = _title_from_lab_result(first_lab_result)
+	if title is not None:
+		return title
+	return "Laboratory Report"
 
 
 async def delete_owned_case(

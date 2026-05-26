@@ -24,6 +24,8 @@ from app.services.medical_case import (
 	delete_owned_case,
 	get_case,
 	get_case_full,
+	get_case_title,
+	get_case_titles,
 	list_cases_for_user,
 )
 
@@ -54,20 +56,61 @@ async def create(
 async def list_mine(
 	current_user: CurrentUser,
 	case_repo: MedicalCaseRepo,
+	lab_repo: LabResultRepo,
 	offset: int = Query(0, ge=0),
 	limit: int = Query(50, ge=1, le=100),
 ) -> SuccessResponse[list[MedicalCaseResponse]]:
 	"""List the authenticated user's medical cases."""
-	cases, total = await list_cases_for_user(
+	cases, _total = await list_cases_for_user(
 		case_repo,
 		current_user.id,
 		offset=offset,
 		limit=limit,
 	)
+	titles = await get_case_titles(cases, lab_repo)
+	responses = [
+		MedicalCaseResponse.model_validate(case).model_copy(
+			update={"title": titles.get(case.id)},
+		)
+		for case in cases
+	]
 	return SuccessResponse(
 		message="OK",
-		data=[MedicalCaseResponse.model_validate(c) for c in cases],
+		data=responses,
 	)
+
+
+@router.patch(
+	"/{case_id}",
+	response_model=SuccessResponse[MedicalCaseResponse],
+	status_code=status.HTTP_200_OK,
+)
+async def update(
+	case_id: UUID,
+	payload: dict,
+	current_user: CurrentUser,
+	case_repo: MedicalCaseRepo,
+) -> SuccessResponse[MedicalCaseResponse]:
+	"""Update a medical case title only.
+
+	This endpoint intentionally ignores any `status` or other keys in the
+	payload — only `title` is accepted. Status updates are controlled by the
+	AI/pipeline and should not be set here.
+	"""
+	case = await get_case(case_repo, case_id, user=current_user)
+
+	title = payload.get("title") if isinstance(payload, dict) else None
+	if title is not None:
+		if not isinstance(title, str):
+			title = None
+		else:
+			title = title.strip() or None
+	case.title = title
+	await case_repo.commit()
+	await case_repo.refresh(case)
+
+	response = MedicalCaseResponse.model_validate(case)
+	return SuccessResponse(message="Medical case updated.", data=response)
 
 
 @router.get(
@@ -97,7 +140,9 @@ async def retrieve_full(
 	return SuccessResponse(
 		message="OK",
 		data=MedicalCaseDetailResponse(
-			case=MedicalCaseResponse.model_validate(detail.case),
+			case=MedicalCaseResponse.model_validate(detail.case).model_copy(
+				update={"title": await get_case_title(detail.case, lab_repo)},
+			),
 			lab_results=[LabResultResponse.model_validate(lr) for lr in detail.lab_results],
 			interpretation=AIInterpretationResponse.model_validate(detail.interpretation)
 			if detail.interpretation is not None
@@ -116,6 +161,7 @@ async def retrieve(
 	ctx: SessionContextDep,
 	manager: GuestSessionManagerDep,
 	case_repo: MedicalCaseRepo,
+	lab_repo: LabResultRepo,
 ) -> SuccessResponse[MedicalCaseResponse]:
 	"""Retrieve a single medical case (ownership enforced by user or guest_session_id)."""
 	case = await get_case(
@@ -127,7 +173,9 @@ async def retrieve(
 	)
 	return SuccessResponse(
 		message="OK",
-		data=MedicalCaseResponse.model_validate(case),
+		data=MedicalCaseResponse.model_validate(case).model_copy(
+			update={"title": await get_case_title(case, lab_repo)},
+		),
 	)
 
 
