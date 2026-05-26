@@ -185,3 +185,18 @@ async def complete_case(
 	await case_repo.commit()
 	await case_repo.refresh(case)
 	return case
+
+
+async def get_case_title(
+	lab_repo: LabResultRepository,
+	case_id: UUID,
+) -> str | None:
+	"""Return the title from the earliest uploaded lab result for a case."""
+	first_lab_result = await lab_repo.first_by_case(case_id)
+	if first_lab_result is None or not isinstance(first_lab_result.extracted_values, dict):
+		return None
+	title = first_lab_result.extracted_values.get("title")
+	if not isinstance(title, str):
+		return None
+	title = title.strip()
+	return title or None

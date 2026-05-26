@@ -23,6 +23,7 @@ from app.services.medical_case import (
 	create_case_for_user,
 	get_case,
 	get_case_full,
+	get_case_title,
 	list_cases_for_user,
 )
 
@@ -53,19 +54,26 @@ async def create(
 async def list_mine(
 	current_user: CurrentUser,
 	case_repo: MedicalCaseRepo,
+	lab_repo: LabResultRepo,
 	offset: int = Query(0, ge=0),
 	limit: int = Query(50, ge=1, le=100),
 ) -> SuccessResponse[list[MedicalCaseResponse]]:
 	"""List the authenticated user's medical cases."""
-	cases, total = await list_cases_for_user(
+	cases, _total = await list_cases_for_user(
 		case_repo,
 		current_user.id,
 		offset=offset,
 		limit=limit,
 	)
+	responses = [
+		MedicalCaseResponse.model_validate(case).model_copy(
+			update={"title": await get_case_title(lab_repo, case.id)},
+		)
+		for case in cases
+	]
 	return SuccessResponse(
 		message="OK",
-		data=[MedicalCaseResponse.model_validate(c) for c in cases],
+		data=responses,
 	)
 
 

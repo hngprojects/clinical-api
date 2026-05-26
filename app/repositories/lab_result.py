@@ -9,6 +9,15 @@ from app.repositories.base import BaseRepository
 class LabResultRepository(BaseRepository[LabResult]):
 	model = LabResult
 
+	async def first_by_case(self, medical_case_id: UUID) -> LabResult | None:
+		result = await self._session.execute(
+			select(LabResult)
+			.where(LabResult.medical_case_id == medical_case_id)
+			.order_by(LabResult.created_at.asc(), LabResult.id.asc())
+			.limit(1)
+		)
+		return result.scalar_one_or_none()
+
 	async def list_by_case(
 		self,
 		medical_case_id: UUID,

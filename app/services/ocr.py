@@ -2,7 +2,7 @@
 OCR extraction service.
 
 Sends the uploaded lab result file (image or PDF) to OpenAI's vision API
-and returns a structured list of test values extracted from the document.
+and returns a structured payload of test values and a document-derived title.
 
 Design notes:
 - The file is fetched from its stored URL and base64-encoded before being
@@ -44,6 +44,7 @@ the provided image or PDF page.
 Return ONLY a JSON object — no markdown fences, no preamble — in this exact
 shape:
 {
+  "title": "<short human-readable title inferred from the report content>",
   "tests": [
     {
       "name": "<test name>",
@@ -55,6 +56,10 @@ shape:
 }
 
 Rules:
+- Infer a short title from the report itself, such as the lab name,
+  report type, or header text.
+- Do not use the file URL or filename as the title.
+- If the document title is unclear, use "Laboratory Report".
 - Include every test line visible in the document.
 - Preserve the original value string exactly (e.g. "11.2", ">0.5", "NEGATIVE").
 - If a field is absent from the document, use null.
@@ -148,6 +153,12 @@ async def extract_lab_values(file_url: str) -> dict[str, Any]:
 
 	if not extracted["tests"]:
 		raise OCRExtractionError("No lab test results found in document")
+
+	title = extracted.get("title")
+	if not isinstance(title, str) or not title.strip() or title.strip().startswith("<"):
+		extracted["title"] = "Laboratory Report"
+	else:
+		extracted["title"] = title.strip()
 
 	logger.info("[ocr] extracted %d tests from %s", len(extracted["tests"]), file_url)
 	return extracted
