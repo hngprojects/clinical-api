@@ -64,6 +64,23 @@ async def upload_lab_result(
 	# Fire the pipeline
 	run_lab_result_pipeline.delay(str(lab_result.id))
 
+	if user is not None:
+		from app.tasks.pipeline import _publish_frontend_event
+
+		await _publish_frontend_event(
+			user.id,
+			"queued_for_processing",
+			{
+				"event": "queued_for_processing",
+				"case_id": str(case.id),
+				"lab_result_id": str(lab_result.id),
+				"stage": "queue",
+				"status": "queued",
+				"message": "Queued for processing",
+				"timestamp": datetime.now(timezone.utc).isoformat(),
+			},
+		)
+
 	return case, lab_result
 
 
@@ -108,6 +125,23 @@ async def handle_file_upload(
 
 	run_lab_result_pipeline.delay(str(lab_result.id))
 
+	if user is not None:
+		from app.tasks.pipeline import _publish_frontend_event
+
+		await _publish_frontend_event(
+			user.id,
+			"queued_for_processing",
+			{
+				"event": "queued_for_processing",
+				"case_id": str(case.id),
+				"lab_result_id": str(lab_result.id),
+				"stage": "queue",
+				"status": "queued",
+				"message": "Queued for processing",
+				"timestamp": datetime.now(timezone.utc).isoformat(),
+			},
+		)
+
 	return case, lab_result
 
 
@@ -133,6 +167,23 @@ async def create_lab_result(
 	await lab_repo.refresh(lab_result)
 
 	run_lab_result_pipeline.delay(str(lab_result.id))
+
+	if case.user_id is not None:
+		from app.tasks.pipeline import _publish_frontend_event
+
+		await _publish_frontend_event(
+			case.user_id,
+			"queued_for_processing",
+			{
+				"event": "queued_for_processing",
+				"case_id": str(case.id),
+				"lab_result_id": str(lab_result.id),
+				"stage": "queue",
+				"status": "queued",
+				"message": "Queued for processing",
+				"timestamp": datetime.now(timezone.utc).isoformat(),
+			},
+		)
 
 	return lab_result
 

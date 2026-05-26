@@ -42,7 +42,7 @@ async def signup_user(
 
 	if existing is not None:
 		if existing.is_email_verified:
-			raise ConflictError("An account with this email already exists.")
+			raise ConflictError("An account with this email already exists. Please log in instead.")
 		existing.password_hash = hash_password(payload.password)
 		existing.first_name = payload.first_name.strip()
 		existing.last_name = payload.last_name.strip()
@@ -64,7 +64,7 @@ async def signup_user(
 			await user_repo.rollback()
 			user = await user_repo.get_by_email(email)
 			if user is None or user.is_email_verified:
-				raise ConflictError("An account with this email already exists.")
+				raise ConflictError("An account with this email already exists. Please log in instead.")
 			user.password_hash = hash_password(payload.password)
 			user.first_name = payload.first_name.strip()
 			user.last_name = payload.last_name.strip()
@@ -175,7 +175,7 @@ async def start_email_change(
 	normalized_email = new_email.strip().lower()
 	existing = await user_repo.get_by_email(normalized_email)
 	if existing is not None and existing.id != user.id:
-		raise ConflictError("Email already in use")
+		raise ConflictError("This email is already linked to another account.")
 
 	_, code = await create_otp_for_user(otp_repo, user_id=user.id, purpose=OtpPurpose.EMAIL_VERIFICATION)
 	user.pending_email = normalized_email
@@ -216,7 +216,7 @@ async def verify_email_change(
 		await user_repo.commit()
 	except IntegrityError as exc:
 		await user_repo.rollback()
-		raise ConflictError("Email already in use") from exc
+		raise ConflictError("This email is already linked to another account.") from exc
 
 	await user_repo.refresh(user)
 	return user

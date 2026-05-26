@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from app.core.config import get_settings
 from app.core.exceptions import EmailError
 from app.core.responses import SuccessResponse
 from app.services.mail_transport import send_with_fallback
@@ -62,7 +63,9 @@ def _prepare_otp(ctx: dict) -> None:
 
 
 def _prepare_waitlist(ctx: dict) -> None:
-	ctx["first_name"] = ctx.get("first_name", "there")
+	ctx["first_name"] = ctx.get("first_name") or ctx.get("name") or "there"
+	base_url = ctx.get("baseUrl") or ctx.get("base_url") or ctx.get("frontend_url") or get_settings().FRONTEND_URL
+	ctx["baseUrl"] = _validate_url(base_url).rstrip("/") if base_url else ""
 
 
 def _prepare_welcome(ctx: dict) -> None:
