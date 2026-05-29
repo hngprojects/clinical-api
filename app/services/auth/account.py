@@ -14,6 +14,7 @@ from app.core.security import hash_password, verify_password
 from app.models.otp import OtpPurpose
 from app.models.user import User, UserRole
 from app.repositories.otp import OtpRepository
+from app.repositories.token_blocklist import TokenBlocklistRepository
 from app.repositories.user import UserRepository
 from app.schemas.auth import SignupRequest
 from app.services.auth.otp import (
@@ -21,6 +22,8 @@ from app.services.auth.otp import (
 	create_otp_for_user,
 	verify_otp_for_user,
 )
+from app.services.auth.tokens import decode_access_token, revoke_refresh_token
+from app.services.auth_sessions import AuthSessionManager
 
 
 async def signup_user(
@@ -39,7 +42,7 @@ async def signup_user(
 
 	if existing is not None:
 		if existing.is_email_verified:
-			raise ConflictError("An account with this email already exists.")
+			raise ConflictError("An account with this email already exists. Please log in instead.")
 		existing.password_hash = hash_password(payload.password)
 		existing.first_name = payload.first_name.strip()
 		existing.last_name = payload.last_name.strip()
@@ -61,7 +64,7 @@ async def signup_user(
 			await user_repo.rollback()
 			user = await user_repo.get_by_email(email)
 			if user is None or user.is_email_verified:
-				raise ConflictError("An account with this email already exists.")
+				raise ConflictError("An account with this email already exists. Please log in instead.")
 			user.password_hash = hash_password(payload.password)
 			user.first_name = payload.first_name.strip()
 			user.last_name = payload.last_name.strip()
@@ -172,7 +175,7 @@ async def start_email_change(
 	normalized_email = new_email.strip().lower()
 	existing = await user_repo.get_by_email(normalized_email)
 	if existing is not None and existing.id != user.id:
-		raise ConflictError("Email already in use")
+		raise ConflictError("This email is already linked to another account.")
 
 	_, code = await create_otp_for_user(otp_repo, user_id=user.id, purpose=OtpPurpose.EMAIL_VERIFICATION)
 	user.pending_email = normalized_email
@@ -213,7 +216,7 @@ async def verify_email_change(
 		await user_repo.commit()
 	except IntegrityError as exc:
 		await user_repo.rollback()
-		raise ConflictError("Email already in use") from exc
+		raise ConflictError("This email is already linked to another account.") from exc
 
 	await user_repo.refresh(user)
 	return user
@@ -221,3 +224,77 @@ async def verify_email_change(
 
 def otp_ttl_seconds() -> int:
 	return get_settings().OTP_EXPIRES_MINUTES * 60
+
+
+async def update_profile(
+	user_repo: UserRepository,
+	*,
+	user: User,
+	first_name: str | None,
+	last_name: str | None,
+) -> User:
+	"""Update the user's first and/or last name. Ignores None fields."""
+	if first_name is not None:
+		normalized = first_name.strip()
+		if not normalized:
+			raise BadRequestError("First name cannot be blank.")
+		user.first_name = normalized
+	if last_name is not None:
+		normalized = last_name.strip()
+		if not normalized:
+			raise BadRequestError("Last name cannot be blank.")
+		user.last_name = normalized
+	return user
+
+
+async def update_password(
+	user_repo: UserRepository,
+	blocklist_repo: TokenBlocklistRepository,
+	auth_manager: AuthSessionManager,
+	*,
+	user: User,
+	current_password: str,
+	new_password: str,
+	access_token: str,
+	refresh_token: str | None,
+) -> None:
+	"""Verify the current password then replace it with a new bcrypt hash.
+
+	Raises BadRequestError if the current password is wrong.
+	Revokes all auth_sessions for the user and blocklists the presented JWTs.
+	"""
+	if not user.password_hash or not verify_password(current_password, user.password_hash):
+		raise BadRequestError("Incorrect password")
+	user.password_hash = hash_password(new_password)
+	await auth_manager.revoke_all(user.id)
+	if refresh_token:
+		await revoke_refresh_token(refresh_token, blocklist_repo)
+	payload = decode_access_token(access_token)
+	jti: str = payload["jti"]
+	expires_at = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
+	await blocklist_repo.revoke(jti=jti, user_id=user.id, expires_at=expires_at)
+
+
+async def delete_account(
+	user_repo: UserRepository,
+	blocklist_repo: TokenBlocklistRepository,
+	auth_manager: AuthSessionManager,
+	*,
+	user: User,
+	access_token: str,
+	refresh_token: str | None,
+) -> None:
+	"""Blocklist active JWTs, revoke device sessions, then permanently delete the user.
+
+	Refresh token is blocklisted first (if present), then the access token.
+	The endpoint owns the commit so all writes land atomically.
+	"""
+	if refresh_token:
+		await auth_manager.revoke_by_refresh_token(refresh_token)
+		await revoke_refresh_token(refresh_token, blocklist_repo)
+	payload = decode_access_token(access_token)
+	jti: str = payload["jti"]
+	expires_at = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
+	await blocklist_repo.revoke(jti=jti, user_id=user.id, expires_at=expires_at)
+	await auth_manager.revoke_all(user.id)
+	await user_repo.delete(user)

@@ -1,5 +1,6 @@
 import json
 import logging
+import uuid
 from collections.abc import AsyncIterator
 from uuid import UUID
 
@@ -38,7 +39,7 @@ async def _stream_notifications(
 	notif_repo: NotificationRepo,
 	current_user: CurrentUser,
 	connection_registry: ConnectionRegistryDep,
-	last_event_id: str | None = Header(None, alias="Last-Event-ID"),
+	last_event_id: str | None = None,
 ) -> AsyncIterator[bytes]:
 	"""Stream pending notifications via SSE with live EventBus updates.
 
@@ -136,8 +137,14 @@ async def _stream_notifications(
 					payload["data"] = {"_truncated": True}
 
 				notification_id = payload.get("notification_id")
+				# If the EventBus payload includes a notification_id we keep the
+				# existing behavior (lookup Notification row and mark delivered).
+				# Otherwise treat this as an ephemeral frontend event and forward
+				# it directly to the SSE client without touching the DB.
 				if not notification_id:
-					logger.warning("SSE payload missing notification_id for user=%s", current_user.id)
+					# ephemeral event: forward payload.data (or whole payload) directly
+					data = payload.get("data") if isinstance(payload.get("data"), dict) else payload
+					yield _format_sse(event.get("type"), data, uuid.uuid4())
 					continue
 				try:
 					notification_uuid = UUID(str(notification_id))

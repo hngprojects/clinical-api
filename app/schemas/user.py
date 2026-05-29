@@ -35,6 +35,20 @@ class UserUpdate(BaseModel):
 	is_active: bool | None = None
 
 
+class ProfileUpdateRequest(BaseModel):
+	"""Schema for updating first/last name."""
+
+	first_name: str | None = Field(default=None, min_length=1, max_length=100)
+	last_name: str | None = Field(default=None, min_length=1, max_length=100)
+
+
+class PasswordUpdateRequest(BaseModel):
+	"""Schema for changing the authenticated user's password."""
+
+	current_password: str = Field(min_length=1, max_length=72)
+	new_password: str = Field(min_length=8, max_length=72)
+
+
 class EmailUpdateRequest(BaseModel):
 	"""Schema for requesting an authenticated email change."""
 

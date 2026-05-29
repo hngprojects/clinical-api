@@ -87,18 +87,26 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
 	)
 
 
+def _validation_error_message(raw: str) -> str:
+	"""Return a user-facing message from a Pydantic validation error entry."""
+	if raw.startswith("Value error, "):
+		return raw.removeprefix("Value error, ")
+	return raw
+
+
 async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
 	"""Handles Pydantic validation errors and returns field-level error details."""
 	errors = [
 		ErrorDetail(
 			field=" -> ".join(str(loc) for loc in error["loc"] if loc != "body"),
-			message=error["msg"],
+			message=_validation_error_message(error["msg"]),
 		)
 		for error in exc.errors()
 	]
+	summary = errors[0].message if len(errors) == 1 else "Validation error"
 	return JSONResponse(
 		status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-		content=ErrorResponse(message="Validation error", errors=errors).model_dump(),
+		content=ErrorResponse(message=summary, errors=errors).model_dump(),
 	)
 
 

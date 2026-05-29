@@ -22,7 +22,8 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
-from typing import Any
+import threading
+from typing import Any, Coroutine
 from uuid import UUID
 
 import redis as redis_sync
@@ -61,6 +62,28 @@ def _get_worker_loop() -> asyncio.AbstractEventLoop:
 		_worker_loop = asyncio.new_event_loop()
 		asyncio.set_event_loop(_worker_loop)
 	return _worker_loop
+
+
+def _run_coro_in_thread(coro: Coroutine[Any, Any, Any]) -> Any:
+	"""Run the given coroutine in a fresh event loop on a background thread.
+	This is used when the current thread already has a running event loop
+	(such as during pytest-asyncio test runs) so we avoid "event loop is
+	already running" errors by executing the coroutine on another thread.
+	"""
+	result: dict = {}
+
+	def _target():
+		try:
+			result["value"] = asyncio.run(coro)
+		except Exception as e:  # capture to re-raise in caller thread
+			result["exc"] = e
+
+	thr = threading.Thread(target=_target)
+	thr.start()
+	thr.join()
+	if "exc" in result:
+		raise result["exc"]
+	return result.get("value")
 
 
 def _get_redis() -> redis_sync.Redis:
@@ -103,7 +126,7 @@ async def _get_event_bus() -> Any:
 	retry_backoff_max=600,
 	retry_jitter=True,
 )
-def run_lab_result_pipeline(self, lab_result_id: str) -> None:
+def run_lab_result_pipeline(self, lab_result_id: str, *args, **kwargs) -> None:
 	"""Celery task entry point.
 
 	Retry policy: exponential backoff with jitter, max 3 retries.
@@ -125,9 +148,72 @@ def run_lab_result_pipeline(self, lab_result_id: str) -> None:
 		return
 
 	try:
-		loop = _get_worker_loop()
-		loop.run_until_complete(_run_pipeline(UUID(lab_result_id), attempt=self.request.retries))
+		# If the test harness or caller already has a running event loop in this
+		# thread (eg. pytest-asyncio), running another loop with
+		# run_until_complete will fail. Detect that case and execute the
+		# coroutine in a background thread instead.
+		# Check if a loop is already running in this thread. Only the call to
+		# `asyncio.get_running_loop()` should be used to detect that; do not let
+		# RuntimeErrors raised by the coroutine itself fall into this branch.
+		try:
+			asyncio.get_running_loop()
+		except RuntimeError:
+			loop = _get_worker_loop()
+			loop.run_until_complete(_run_pipeline(UUID(lab_result_id), attempt=self.request.retries))
+		else:
+			_run_coro_in_thread(_run_pipeline(UUID(lab_result_id), attempt=self.request.retries))
 	except Exception as exc:
+		try:
+			# Obtain pipeline context; run in background thread if needed.
+			try:
+				asyncio.get_running_loop()
+			except RuntimeError:
+				context = _get_worker_loop().run_until_complete(_get_pipeline_context(UUID(lab_result_id)))
+			else:
+				context = _run_coro_in_thread(_get_pipeline_context(UUID(lab_result_id)))
+			if context is not None and self.request.retries < self.max_retries:
+				case_id, user_id = context
+				from datetime import datetime, timezone
+
+				# Publish retry scheduled frontend event without touching DB.
+				try:
+					asyncio.get_running_loop()
+				except RuntimeError:
+					_get_worker_loop().run_until_complete(
+						_publish_frontend_event(
+							user_id,
+							"retry_scheduled",
+							{
+								"event": "retry_scheduled",
+								"case_id": str(case_id),
+								"lab_result_id": str(lab_result_id),
+								"stage": "retry",
+								"status": "processing",
+								"message": "Retry scheduled",
+								"attempt": self.request.retries + 1,
+								"timestamp": datetime.now(timezone.utc).isoformat(),
+							},
+						)
+					)
+				else:
+					_run_coro_in_thread(
+						_publish_frontend_event(
+							user_id,
+							"retry_scheduled",
+							{
+								"event": "retry_scheduled",
+								"case_id": str(case_id),
+								"lab_result_id": str(lab_result_id),
+								"stage": "retry",
+								"status": "processing",
+								"message": "Retry scheduled",
+								"attempt": self.request.retries + 1,
+								"timestamp": datetime.now(timezone.utc).isoformat(),
+							},
+						)
+					)
+		except Exception:
+			pass
 		logger.exception(
 			"[pipeline] error on attempt %d/%d for lab_result_id=%s",
 			self.request.retries + 1,
@@ -145,7 +231,9 @@ def run_lab_result_pipeline(self, lab_result_id: str) -> None:
 				attempts=self.request.retries + 1,
 			)
 			return
-		raise self.retry(exc=exc) from exc
+		# Call the task's retry handler and let Celery raise the control-flow
+		# exception (tests should patch `self.retry` to raise when needed).
+		self.retry(exc=exc)
 	finally:
 		try:
 			lock.release()
@@ -177,8 +265,14 @@ def dead_letter_pipeline(
 		attempts,
 		error,
 	)
-	loop = _get_worker_loop()
-	loop.run_until_complete(_mark_pipeline_dead(UUID(lab_result_id), error, attempts))
+	# Run the async cleanup in a safe way even if a loop is already running
+	try:
+		asyncio.get_running_loop()
+	except RuntimeError:
+		loop = _get_worker_loop()
+		loop.run_until_complete(_mark_pipeline_dead(UUID(lab_result_id), error, attempts))
+	else:
+		_run_coro_in_thread(_mark_pipeline_dead(UUID(lab_result_id), error, attempts))
 
 
 async def _mark_pipeline_dead(
@@ -201,6 +295,8 @@ async def _mark_pipeline_dead(
 
 		case_id: UUID = lab_result.medical_case_id
 
+		from datetime import datetime, timezone
+
 		if lab_result.ocr_status not in (OCRStatus.COMPLETE, OCRStatus.FAILED):
 			await _set_ocr_status(session, lab_result_id, "failed")
 
@@ -214,6 +310,24 @@ async def _mark_pipeline_dead(
 			attempt=attempts,
 		)
 
+		# Publish final frontend failure event so clients can update UI (ephemeral)
+		try:
+			user_id = await _get_case_user_id(session, case_id)
+			await _publish_frontend_event(
+				user_id,
+				"processing_failed",
+				{
+					"case_id": str(case_id),
+					"lab_result_id": str(lab_result_id),
+					"stage": "pipeline",
+					"status": "failed",
+					"message": error,
+					"timestamp": datetime.now(timezone.utc).isoformat(),
+				},
+			)
+		except Exception:
+			pass
+
 		logger.error(
 			"[dlq] marked lab_result_id=%s FAILED after %d attempts: %s",
 			lab_result_id,
@@ -222,9 +336,20 @@ async def _mark_pipeline_dead(
 		)
 
 
+async def _get_pipeline_context(lab_result_id: UUID) -> tuple[UUID, UUID | None] | None:
+	from app.db.session import AsyncSessionLocal
+
+	async with AsyncSessionLocal() as session:
+		lab_result = await _get_lab_result(session, lab_result_id)
+		if lab_result is None:
+			return None
+		return lab_result.medical_case_id, await _get_case_user_id(session, lab_result.medical_case_id)
+
+
 async def _run_pipeline(lab_result_id: UUID, attempt: int = 0) -> None:
 	"""Execute the full OCR → AI pipeline for one lab result."""
 	import time
+	from datetime import datetime, timezone
 
 	from app.db.session import AsyncSessionLocal
 	from app.services.llm import get_last_provider
@@ -241,6 +366,25 @@ async def _run_pipeline(lab_result_id: UUID, attempt: int = 0) -> None:
 
 		user_id: UUID | None = await _get_case_user_id(session, case_id)
 
+		try:
+			from datetime import datetime, timezone
+
+			await _publish_frontend_event(
+				user_id,
+				"processing_started",
+				{
+					"event": "processing_started",
+					"case_id": str(case_id),
+					"lab_result_id": str(lab_result_id),
+					"stage": "processing",
+					"status": "processing",
+					"message": "Pipeline started",
+					"timestamp": datetime.now(timezone.utc).isoformat(),
+				},
+			)
+		except Exception:
+			pass
+
 		await _log_event(session, lab_result_id, "PIPELINE_STARTED", attempt=attempt)
 
 		# Guard: storage URL must be present
@@ -250,11 +394,44 @@ async def _run_pipeline(lab_result_id: UUID, attempt: int = 0) -> None:
 			await _set_case_status(session, case_id, "failed")
 			await _log_event(session, lab_result_id, "PIPELINE_FAILED", error="No file URL present")
 			await _publish_pipeline_event(session, user_id, "interpretation_failed", {"case_id": str(case_id)}, case_id)
+			# Emit frontend transient failure
+			try:
+				await _publish_frontend_event(
+					user_id,
+					"processing_failed",
+					{
+						"case_id": str(case_id),
+						"lab_result_id": str(lab_result_id),
+						"stage": "pipeline",
+						"status": "failed",
+						"message": "No file URL present",
+						"timestamp": datetime.now(timezone.utc).isoformat(),
+					},
+				)
+			except Exception:
+				pass
 			return
 
 		# Stage 1: OCR
-
 		await _set_ocr_status(session, lab_result_id, "processing")
+		try:
+			from datetime import datetime, timezone
+
+			await _publish_frontend_event(
+				user_id,
+				"ocr_started",
+				{
+					"event": "ocr_started",
+					"case_id": str(case_id),
+					"lab_result_id": str(lab_result_id),
+					"stage": "ocr",
+					"status": "processing",
+					"message": "OCR started",
+					"timestamp": datetime.now(timezone.utc).isoformat(),
+				},
+			)
+		except Exception:
+			pass
 		await _log_event(
 			session,
 			lab_result_id,
@@ -271,6 +448,25 @@ async def _run_pipeline(lab_result_id: UUID, attempt: int = 0) -> None:
 			ocr_ms = int((time.monotonic() - ocr_start) * 1000)
 
 			await _set_ocr_status(session, lab_result_id, "complete", extracted_values=extracted)
+			# Emit frontend progress: OCR completed
+			try:
+				from datetime import datetime, timezone
+
+				await _publish_frontend_event(
+					user_id,
+					"ocr_completed",
+					{
+						"event": "ocr_completed",
+						"case_id": str(case_id),
+						"lab_result_id": str(lab_result_id),
+						"stage": "ocr",
+						"status": "complete",
+						"message": "OCR completed",
+						"timestamp": datetime.now(timezone.utc).isoformat(),
+					},
+				)
+			except Exception:
+				pass
 			await _log_event(
 				session,
 				lab_result_id,
@@ -286,6 +482,22 @@ async def _run_pipeline(lab_result_id: UUID, attempt: int = 0) -> None:
 			ocr_ms = int((time.monotonic() - ocr_start) * 1000)
 			logger.error("[pipeline] stage 1 — OCR failed for lab_result_id=%s: %s", lab_result_id, exc)
 			await _set_ocr_status(session, lab_result_id, "failed")
+			# Emit frontend progress: OCR failed (transient UI event)
+			try:
+				await _publish_frontend_event(
+					user_id,
+					"processing_failed",
+					{
+						"case_id": str(case_id),
+						"lab_result_id": str(lab_result_id),
+						"stage": "ocr",
+						"status": "failed",
+						"message": str(exc),
+						"timestamp": datetime.now(timezone.utc).isoformat(),
+					},
+				)
+			except Exception:
+				pass
 			await _set_case_status(session, case_id, "failed")
 			await _log_event(
 				session,
@@ -310,6 +522,25 @@ async def _run_pipeline(lab_result_id: UUID, attempt: int = 0) -> None:
 			status_before="pending",
 			status_after="processing",
 		)
+		# Emit frontend progress: AI analysis started
+		try:
+			from datetime import datetime, timezone
+
+			await _publish_frontend_event(
+				user_id,
+				"ai_analysis_started",
+				{
+					"event": "ai_analysis_started",
+					"case_id": str(case_id),
+					"lab_result_id": str(lab_result_id),
+					"stage": "interpretation",
+					"status": "processing",
+					"message": "AI analysis started",
+					"timestamp": datetime.now(timezone.utc).isoformat(),
+				},
+			)
+		except Exception:
+			pass
 
 		ai_start = time.monotonic()
 		try:
@@ -330,6 +561,38 @@ async def _run_pipeline(lab_result_id: UUID, attempt: int = 0) -> None:
 				provider=get_last_provider(),
 				attempt=attempt,
 			)
+			# Emit frontend progress: AI analysis complete and ready for review
+			try:
+				from datetime import datetime, timezone
+
+				await _publish_frontend_event(
+					user_id,
+					"ai_analysis_completed",
+					{
+						"event": "ai_analysis_completed",
+						"case_id": str(case_id),
+						"lab_result_id": str(lab_result_id),
+						"stage": "interpretation",
+						"status": "complete",
+						"message": "AI analysis complete",
+						"timestamp": datetime.now(timezone.utc).isoformat(),
+					},
+				)
+				await _publish_frontend_event(
+					user_id,
+					"ready_for_review",
+					{
+						"event": "ready_for_review",
+						"case_id": str(case_id),
+						"lab_result_id": str(lab_result_id),
+						"stage": "review",
+						"status": "ready_for_review",
+						"message": "Ready for review",
+						"timestamp": datetime.now(timezone.utc).isoformat(),
+					},
+				)
+			except Exception:
+				pass
 			await _publish_pipeline_event(session, user_id, "interpretation_ready", {"case_id": str(case_id)}, case_id)
 
 		except InterpretationError as exc:
@@ -337,6 +600,22 @@ async def _run_pipeline(lab_result_id: UUID, attempt: int = 0) -> None:
 			logger.error("[pipeline] stage 2 — AI failed for lab_result_id=%s: %s", lab_result_id, exc)
 			await _fail_interpretation(session, interp_id)
 			await _set_case_status(session, case_id, "failed")
+			# Emit frontend progress: AI failed
+			try:
+				await _publish_frontend_event(
+					user_id,
+					"processing_failed",
+					{
+						"case_id": str(case_id),
+						"lab_result_id": str(lab_result_id),
+						"stage": "interpretation",
+						"status": "failed",
+						"message": str(exc),
+						"timestamp": datetime.now(timezone.utc).isoformat(),
+					},
+				)
+			except Exception:
+				pass
 			await _log_event(
 				session,
 				lab_result_id,
@@ -447,6 +726,26 @@ async def _publish_pipeline_event(
 	except Exception as exc:
 		logger.warning(
 			"[events] failed to publish %s for user_id=%s: %s",
+			event_type,
+			user_id,
+			exc,
+		)
+
+
+async def _publish_frontend_event(user_id: UUID | None, event_type: str, payload: dict) -> None:
+	"""Publish an ephemeral frontend event over the EventBus. This does NOT persist
+	anything to the database and is intended for UI-only progress updates.
+	"""
+	if user_id is None:
+		return
+	try:
+		bus = await _get_event_bus()
+		# Wrap payload under a `data` key to keep the EventBus payload shape simple.
+		await bus.publish(user_id, event_type, {"data": payload})
+		logger.debug("[events] published frontend event %s for user_id=%s", event_type, user_id)
+	except Exception as exc:
+		logger.warning(
+			"[events] failed to publish frontend event %s for user_id=%s: %s",
 			event_type,
 			user_id,
 			exc,

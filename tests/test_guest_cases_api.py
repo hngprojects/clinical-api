@@ -49,6 +49,8 @@ async def test_list_guest_cases_returns_uploaded_case(client: AsyncClient) -> No
 	assert response.status_code == 200
 	ids = [item["id"] for item in response.json()["data"]]
 	assert case_id in ids
+	case_row = next(item for item in response.json()["data"] if item["id"] == case_id)
+	assert case_row["title"] == "Laboratory Report"
 
 
 async def test_list_guest_cases_missing_header_returns_401(client: AsyncClient) -> None:

@@ -26,14 +26,6 @@ API = "/api/v1"
 PIPELINE_TASK = "app.tasks.pipeline.run_lab_result_pipeline"
 
 
-def _lab_upload_payload(case_id: str) -> dict:
-	return {
-		"medical_case_id": case_id,
-		"file": {"name": "blood_panel.jpg", "url": "https://storage.example.com/blood_panel.jpg"},
-		"ocr_status": "pending",
-	}
-
-
 async def test_patient_opens_history_after_lab_upload(client, auth_headers):
 	"""After creating a case and uploading a report, GET /cases/{id}/full reflects pending OCR."""
 	case_resp = await client.post(f"{API}/cases", headers=auth_headers)
@@ -44,7 +36,7 @@ async def test_patient_opens_history_after_lab_upload(client, auth_headers):
 	with patch(PIPELINE_TASK, mock_task):
 		lab_resp = await client.post(
 			f"{API}/cases/{case_id}/lab-results",
-			json=_lab_upload_payload(case_id),
+			files={"file": ("blood_panel.jpg", b"fake-image-content", "image/jpeg")},
 			headers=auth_headers,
 		)
 	assert lab_resp.status_code == 201
@@ -122,6 +114,7 @@ async def test_patient_history_matches_chat_thread_when_ready(client, test_user,
 	full_data = full_resp.json()["data"]
 	assert full_data["interpretation"] is not None
 	assert full_data["interpretation"]["summary"] == "Values look fine."
+	assert full_data["case"]["title"] == "Laboratory Report"
 	assert len(full_data["chats"]) == 2
 
 	thread_resp = await client.get(f"{API}/cases/{case_id}/chat", headers=auth_headers)
@@ -137,11 +130,41 @@ async def test_patient_case_list_includes_case_before_opening_full(client, test_
 	assert case_resp.status_code == 201
 	case_id = case_resp.json()["data"]["id"]
 
+	update_resp = await client.patch(
+		f"{API}/cases/{case_id}",
+		json={"title": "Blood Panel"},
+		headers=auth_headers,
+	)
+	assert update_resp.status_code == 200
+	assert update_resp.json()["data"]["title"] == "Blood Panel"
+	assert update_resp.json()["data"]["status"] == "pending"
+
+	clear_resp = await client.patch(
+		f"{API}/cases/{case_id}",
+		json={"title": None, "status": "failed", "ignored": "value"},
+		headers=auth_headers,
+	)
+	assert clear_resp.status_code == 200
+	assert clear_resp.json()["data"]["title"] is None
+	assert clear_resp.json()["data"]["status"] == "pending"
+
+	rename_resp = await client.patch(
+		f"{API}/cases/{case_id}",
+		json={"title": "Renamed Panel", "status": "failed", "ignored": "value"},
+		headers=auth_headers,
+	)
+	assert rename_resp.status_code == 200
+	assert rename_resp.json()["data"]["title"] == "Renamed Panel"
+	assert rename_resp.json()["data"]["status"] == "pending"
+
 	list_resp = await client.get(f"{API}/cases", headers=auth_headers)
 	assert list_resp.status_code == 200
-	ids = [row["id"] for row in list_resp.json()["data"]]
-	assert case_id in ids
+	rows = list_resp.json()["data"]
+	case_row = next(row for row in rows if row["id"] == case_id)
+	assert case_row["title"] == "Renamed Panel"
 
 	full_resp = await client.get(f"{API}/cases/{case_id}/full", headers=auth_headers)
 	assert full_resp.status_code == 200
-	assert full_resp.json()["data"]["case"]["id"] == case_id
+	full_case = full_resp.json()["data"]["case"]
+	assert full_case["id"] == case_id
+	assert full_case["title"] == "Renamed Panel"

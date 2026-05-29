@@ -20,7 +20,7 @@ pytestmark = pytest.mark.asyncio(loop_scope="session")
 API = "/api/v1"
 
 
-# ── Helpers ──────────────────────────────────────────────────────────────
+# ── Helpers ─────────────────────────────────────────────────────────────
 
 
 async def _seed_case_with_logs(user: User) -> tuple[uuid.UUID, uuid.UUID]:

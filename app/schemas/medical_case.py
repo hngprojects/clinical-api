@@ -30,6 +30,7 @@ class MedicalCaseUpdate(BaseModel):
 	"""Schema for updating a medical case."""
 
 	status: MedicalCaseStatus | None = None
+	title: str | None = None
 	completed_at: datetime | None = None
 
 
@@ -39,6 +40,7 @@ class MedicalCaseResponse(MedicalCaseBase):
 	id: UUID
 	user_id: UUID | None = None
 	guest_session_id: UUID | None = None
+	title: str | None = None
 	created_at: datetime
 	completed_at: datetime | None = None
 

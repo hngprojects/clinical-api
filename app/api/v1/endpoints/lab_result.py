@@ -11,10 +11,10 @@ from app.api.deps import (
 )
 from app.core.exceptions import BadRequestError, ForbiddenError, UnauthorizedError
 from app.core.responses import SuccessResponse
-from app.schemas.lab_result import LabResultCreate, LabResultResponse, UploadResponse
+from app.schemas.lab_result import LabResultResponse, UploadResponse
 from app.services.guest_sessions import GuestUsageAction
 from app.services.lab_result import (
-	create_lab_result,
+	add_file_to_case,
 	get_lab_result,
 	handle_file_upload,
 	list_lab_results_for_case,
@@ -100,16 +100,42 @@ async def upload(
 	status_code=status.HTTP_201_CREATED,
 )
 async def create(
+	request: Request,
 	case_id: UUID,
-	payload: LabResultCreate,
 	current_user: CurrentUser,
 	lab_repo: LabResultRepo,
 	case_repo: MedicalCaseRepo,
+	file: UploadFile = File(...),
 ) -> SuccessResponse[LabResultResponse]:
-	"""Upload a new lab result to a medical case."""
+	"""Upload a new lab result file to a medical case."""
 	await get_case(case_repo, case_id, user=current_user)
-	payload.medical_case_id = case_id
-	result = await create_lab_result(lab_repo, case_repo, payload)
+
+	valid_media_types = {
+		"image/jpeg",
+		"image/png",
+		"image/webp",
+		"application/pdf",
+	}
+	if file.content_type not in valid_media_types:
+		raise BadRequestError("Unsupported file type. Acceptable types are JPEG, PNG, WebP, or PDF.")
+
+	if file.size is not None and file.size > 10 * 1024 * 1024:
+		raise BadRequestError("File size must be 10MB or smaller.")
+
+	file_contents = await file.read()
+	if len(file_contents) > 10 * 1024 * 1024:
+		raise BadRequestError("File size must be 10MB or smaller.")
+
+	public_url_base = str(request.base_url).rstrip("/")
+	result = await add_file_to_case(
+		lab_repo,
+		case_repo,
+		case_id,
+		file_contents,
+		file.filename,
+		file.content_type or "application/octet-stream",
+		public_url_base,
+	)
 	return SuccessResponse(
 		message="Lab result created.",
 		data=LabResultResponse.model_validate(result),
