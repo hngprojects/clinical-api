@@ -32,10 +32,11 @@ _ASYNC_SESSION_LOCAL_TARGETS = [
 
 
 class _FakeRedis:
-	"""In-memory Redis stand-in for rate-limit tests."""
+	"""In-memory Redis stand-in for rate-limit and guest-upload lock tests."""
 
 	def __init__(self) -> None:
 		self._counts: dict[str, int] = {}
+		self._strings: dict[str, str] = {}
 
 	async def incr(self, key: str) -> int:
 		self._counts[key] = self._counts.get(key, 0) + 1
@@ -45,12 +46,32 @@ class _FakeRedis:
 		return True
 
 	async def get(self, key: str) -> str | None:
+		if key in self._strings:
+			return self._strings[key]
 		if key not in self._counts:
 			return None
 		return str(self._counts[key])
 
+	async def set(
+		self,
+		key: str,
+		value: str,
+		*,
+		nx: bool = False,
+		ex: int | None = None,  # noqa: ARG002
+	) -> bool | None:
+		if nx and key in self._strings:
+			return None
+		self._strings[key] = value
+		return True
+
 	async def delete(self, key: str) -> int:
-		return 1 if self._counts.pop(key, None) is not None else 0
+		removed = 0
+		if self._counts.pop(key, None) is not None:
+			removed = 1
+		if self._strings.pop(key, None) is not None:
+			removed = 1
+		return removed
 
 
 @pytest.fixture(autouse=True)

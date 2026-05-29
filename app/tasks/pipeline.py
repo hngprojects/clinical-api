@@ -328,6 +328,9 @@ async def _mark_pipeline_dead(
 		except Exception:
 			pass
 
+		await session.commit()
+		await _guest_pipeline_failed(session, case_id)
+
 		logger.error(
 			"[dlq] marked lab_result_id=%s FAILED after %d attempts: %s",
 			lab_result_id,
@@ -410,6 +413,8 @@ async def _run_pipeline(lab_result_id: UUID, attempt: int = 0) -> None:
 				)
 			except Exception:
 				pass
+			await session.commit()
+			await _guest_pipeline_failed(session, case_id)
 			return
 
 		# Stage 1: OCR
@@ -511,6 +516,8 @@ async def _run_pipeline(lab_result_id: UUID, attempt: int = 0) -> None:
 				error=str(exc),
 			)
 			await _publish_pipeline_event(session, user_id, "interpretation_failed", {"case_id": str(case_id)}, case_id)
+			await session.commit()
+			await _guest_pipeline_failed(session, case_id)
 			return
 
 		# Stage 2: AI interpretation
@@ -594,6 +601,8 @@ async def _run_pipeline(lab_result_id: UUID, attempt: int = 0) -> None:
 			except Exception:
 				pass
 			await _publish_pipeline_event(session, user_id, "interpretation_ready", {"case_id": str(case_id)}, case_id)
+			await session.commit()
+			await _guest_pipeline_succeeded(case_id)
 
 		except InterpretationError as exc:
 			ai_ms = int((time.monotonic() - ai_start) * 1000)
@@ -628,6 +637,32 @@ async def _run_pipeline(lab_result_id: UUID, attempt: int = 0) -> None:
 				error=str(exc),
 			)
 			await _publish_pipeline_event(session, user_id, "interpretation_failed", {"case_id": str(case_id)}, case_id)
+			await session.commit()
+			await _guest_pipeline_failed(session, case_id)
+
+
+async def _get_case_guest_session_id(session, case_id: UUID) -> UUID | None:
+	from app.models.medical_case import MedicalCase
+
+	case = await session.get(MedicalCase, case_id)
+	if case is None or case.user_id is not None:
+		return None
+	return case.guest_session_id
+
+
+async def _guest_pipeline_failed(session, case_id: UUID) -> None:
+	"""Purge guest case data after pipeline failure (caller should commit pipeline state first)."""
+	if await _get_case_guest_session_id(session, case_id) is None:
+		return
+	from app.services.guest_upload import purge_guest_failed_upload
+
+	await purge_guest_failed_upload(session, case_id)
+
+
+async def _guest_pipeline_succeeded(case_id: UUID) -> None:
+	from app.services.guest_upload import complete_guest_upload_quota
+
+	await complete_guest_upload_quota(case_id)
 
 
 async def _get_lab_result(session, lab_result_id: UUID):  # type: ignore[no-untyped-def]
