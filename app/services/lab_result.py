@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from app.core.exceptions import ForbiddenError, NotFoundError, UnauthorizedError
+from app.core.exceptions import BadRequestError, ForbiddenError, NotFoundError, UnauthorizedError
 from app.models.guest_session import GuestSession
 from app.models.lab_result import LabResult, OCRStatus
 from app.models.medical_case import MedicalCase, MedicalCaseStatus
@@ -161,6 +161,60 @@ async def create_lab_result(
 		medical_case_id=payload.medical_case_id,
 		file=payload.file.model_dump(),
 		ocr_status=payload.ocr_status,
+	)
+	lab_repo.add(lab_result)
+	await lab_repo.commit()
+	await lab_repo.refresh(lab_result)
+
+	run_lab_result_pipeline.delay(str(lab_result.id))
+
+	if case.user_id is not None:
+		from app.tasks.pipeline import _publish_frontend_event
+
+		await _publish_frontend_event(
+			case.user_id,
+			"queued_for_processing",
+			{
+				"event": "queued_for_processing",
+				"case_id": str(case.id),
+				"lab_result_id": str(lab_result.id),
+				"stage": "queue",
+				"status": "queued",
+				"message": "Queued for processing",
+				"timestamp": datetime.now(timezone.utc).isoformat(),
+			},
+		)
+
+	return lab_result
+
+
+async def add_file_to_case(
+	lab_repo: LabResultRepository,
+	case_repo: MedicalCaseRepository,
+	case_id: UUID,
+	file: bytes,
+	filename: str,
+	content_type: str,
+	public_url_base: str,
+) -> LabResult:
+	"""Upload a file and attach it as a new lab result to an existing medical case."""
+	from app.services.storage import upload_medical_file
+	from app.tasks.pipeline import run_lab_result_pipeline
+
+	case = await case_repo.get_by_id(case_id)
+	if case is None:
+		raise NotFoundError("Medical case not found.")
+
+	existing_count = await lab_repo.count_by_case(case_id)
+	if existing_count >= 3:
+		raise BadRequestError("A medical case cannot have more than 3 lab result uploads.")
+
+	file_metadata = await upload_medical_file(file, filename, content_type, public_url_base)
+
+	lab_result = LabResult(
+		medical_case_id=case_id,
+		file={"name": file_metadata["filename"], "url": file_metadata["file_url"]},
+		ocr_status=OCRStatus.PENDING,
 	)
 	lab_repo.add(lab_result)
 	await lab_repo.commit()
