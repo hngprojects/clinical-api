@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from app.core.exceptions import UnauthorizedError
+from app.core.exceptions import BadRequestError, UnauthorizedError
 from app.core.password_policy import validate_password_strength
 from app.core.security import (
 	hash_opaque_token,
@@ -61,6 +61,9 @@ async def reset_password(
 	if not user or not user.is_active:
 		raise UnauthorizedError("Invalid or expired reset token")
 
-	validate_password_strength(new_password)
+	try:
+		validate_password_strength(new_password)
+	except ValueError as exc:
+		raise BadRequestError(str(exc)) from exc
 	user.password_hash = hash_password(new_password)
 	await reset_repo.delete(row)

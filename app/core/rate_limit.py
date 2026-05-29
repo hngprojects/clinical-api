@@ -68,10 +68,11 @@ def _verify_otp_fail_key(ip_hash: str) -> str:
 
 
 async def record_verify_otp_failure(ip_hash: str) -> None:
+	settings = get_settings()
 	redis = await get_redis()
 	key = _verify_otp_fail_key(ip_hash)
 	count = await redis.incr(key)
 	if count == 1:
-		await redis.expire(key, 300)
-	if count > 5:
+		await redis.expire(key, settings.OTP_FAILURE_RATE_WINDOW_SECONDS)
+	if count > settings.OTP_FAILURE_RATE_LIMIT:
 		raise RateLimitExceeded("Too many OTP attempts")
