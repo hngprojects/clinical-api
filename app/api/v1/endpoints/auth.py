@@ -28,6 +28,8 @@ from app.core.rate_limit import (
 	clear_login_failures,
 	enforce_rate_limit,
 	record_login_failure,
+	enforce_action_rate_limit,
+	record_verify_otp_failure,
 )
 from app.core.responses import SuccessResponse
 from app.core.security import hash_opaque_token, hash_password
@@ -195,12 +197,27 @@ async def verify_otp(
 	response: Response,
 ) -> SuccessResponse[TokenResponse]:
 	"""Verify the email-verification OTP sent after signup."""
-	user = await authenticate_otp(
-		user_repo,
-		otp_repo,
-		email=payload.email,
-		code=payload.code,
+
+	settings = get_settings()
+
+	await enforce_action_rate_limit(
+		key=f"rl:verify-otp:{ip_hash}",
+		limit=5,
+		window_seconds=300,
+		message="Too many OTP verification attempts. Try again later.",
 	)
+	try:
+
+		user = await authenticate_otp(
+			user_repo,
+			otp_repo,
+			email=payload.email,
+			code=payload.code,
+		)
+	except Exception:
+		await record_verify_otp_failure(ip_hash)
+		raise
+
 	migration_guest_id = payload.guest_session_id or guest_session_id
 	if migration_guest_id:
 		await migrate_guest_session_to_user(
@@ -237,8 +254,19 @@ async def resend(
 	payload: ResendOtpRequest,
 	user_repo: UserRepo,
 	otp_repo: OtpRepo,
+	ip_hash: ClientIpHash,
 ) -> SuccessResponse[OtpDispatchResponse]:
+
 	"""Re-send the email-verification OTP."""
+	settings=get_settings()
+
+	await enforce_action_rate_limit(
+    key=f"rl:resend-otp:{ip_hash}",
+    limit=3,
+    window_seconds=300,
+    message="Too many OTP resend requests. Try again later.",
+)
+
 	user, code = await resend_otp(user_repo, otp_repo, email=payload.email)
 	email_dispatched = False
 	try:
@@ -284,12 +312,23 @@ async def forgot_password(
 	user_repo: UserRepo,
 	otp_repo: OtpRepo,
 	session: DBSession,
+	ip_hash: ClientIpHash,
 ) -> SuccessResponse:
 	"""Send an OTP to the user's email to allow password reset.
 
 	Always returns 200 regardless of whether the email is registered to prevent
 	user-enumeration attacks.
 	"""
+
+	settings=get_settings()
+
+	await enforce_action_rate_limit(
+        key=f"rl:forgot-password:{ip_hash}",
+        limit=3,
+        window_seconds=600,
+        message="Too many password reset requests. Try again later.",
+    )
+
 	user = await user_repo.get_by_email(request.email.strip().lower())
 	if user:
 		_, code = await create_otp_for_user(otp_repo, user_id=user.id, purpose=OtpPurpose.RESET_PASSWORD)
@@ -309,8 +348,18 @@ async def password_reset(
 	request: ResetPasswordRequest,
 	user_repo: UserRepo,
 	otp_repo: OtpRepo,
+	ip_hash: ClientIpHash,
 ) -> SuccessResponse:
 	"""Reset password using an OTP sent to the user's email."""
+
+	settings=get_settings()
+	
+	await enforce_action_rate_limit(
+        key=f"rl:reset-password:{ip_hash}:{request.email}",
+        limit=5,
+        window_seconds=600,
+        message="Too many password reset attempts. Try again later.",
+    )
 	user = await user_repo.get_by_email(request.email.strip().lower())
 	if not user:
 		raise UnauthorizedError("Invalid or expired reset OTP")
@@ -320,6 +369,7 @@ async def password_reset(
 	except Exception:
 		await user_repo.commit()
 		raise UnauthorizedError("Invalid or expired reset OTP")
+
 
 	user.password_hash = hash_password(request.new_password)
 	await user_repo.commit()
