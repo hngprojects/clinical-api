@@ -24,15 +24,8 @@ PIPELINE_TASK = "app.tasks.pipeline.run_lab_result_pipeline"
 
 
 
-def _lab_result_payload(case_id: str) -> dict:
-    return {
-        "medical_case_id": case_id,
-        "file": {
-            "name": "blood_panel.jpg",
-            "url": "https://storage.example.com/blood_panel.jpg",
-        },
-        "ocr_status": "pending",
-    }
+def _lab_result_file() -> dict:
+    return {"file": ("blood_panel.jpg", b"fake-image-content", "image/jpeg")}
 
 
 
@@ -63,7 +56,7 @@ async def test_create_lab_result_returns_201_and_dispatches_pipeline(client, aut
     with patch(PIPELINE_TASK, mock_task):
         response = await client.post(
             f"{API}/cases/{case_id}/lab-results",
-            json=_lab_result_payload(case_id),
+            files=_lab_result_file(),
             headers=auth_headers,
         )
 
@@ -91,7 +84,7 @@ async def test_lab_result_ocr_status_is_pending_immediately_after_upload(client,
     with patch(PIPELINE_TASK, mock_task):
         lab_resp = await client.post(
             f"{API}/cases/{case_id}/lab-results",
-            json=_lab_result_payload(case_id),
+            files=_lab_result_file(),
             headers=auth_headers,
         )
 
@@ -110,7 +103,7 @@ async def test_list_lab_results_for_case(client, auth_headers):
     with patch(PIPELINE_TASK, mock_task):
         await client.post(
             f"{API}/cases/{case_id}/lab-results",
-            json=_lab_result_payload(case_id),
+            files=_lab_result_file(),
             headers=auth_headers,
         )
 
@@ -131,7 +124,7 @@ async def test_retrieve_single_lab_result_by_id(client, auth_headers):
     with patch(PIPELINE_TASK, mock_task):
         lab_resp = await client.post(
             f"{API}/cases/{case_id}/lab-results",
-            json=_lab_result_payload(case_id),
+            files=_lab_result_file(),
             headers=auth_headers,
         )
     result_id = lab_resp.json()["data"]["id"]
@@ -159,7 +152,7 @@ async def test_interpretations_latest_is_404_before_pipeline_runs(client, auth_h
     with patch(PIPELINE_TASK, mock_task):
         await client.post(
             f"{API}/cases/{case_id}/lab-results",
-            json=_lab_result_payload(case_id),
+            files=_lab_result_file(),
             headers=auth_headers,
         )
 
@@ -179,7 +172,7 @@ async def test_unauthenticated_upload_returns_401(client):
     fake_case_id = str(uuid.uuid4())
     response = await client.post(
         f"{API}/cases/{fake_case_id}/lab-results",
-        json=_lab_result_payload(fake_case_id),
+        files=_lab_result_file(),
         # no headers
     )
     assert response.status_code == 401
@@ -216,7 +209,7 @@ async def test_wrong_user_cannot_upload_to_another_users_case(client, auth_heade
     with patch(PIPELINE_TASK, mock_task):
         response = await client.post(
             f"{API}/cases/{case_id}/lab-results",
-            json=_lab_result_payload(case_id),
+            files=_lab_result_file(),
             headers=other_headers,
         )
 
@@ -240,7 +233,7 @@ async def test_upload_to_nonexistent_case_returns_404(client, auth_headers):
     with patch(PIPELINE_TASK, mock_task):
         response = await client.post(
             f"{API}/cases/{fake_case_id}/lab-results",
-            json=_lab_result_payload(fake_case_id),
+            files=_lab_result_file(),
             headers=auth_headers,
         )
 
