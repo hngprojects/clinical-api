@@ -94,7 +94,6 @@ async def build_system_prompt(
 		"Be clear, compassionate, and avoid unnecessary medical jargon.",
 		"Provide concise explanation of each metrics in a plane and simple manner"
 		"Allow the user understand their result and provide direct answers to their follow up question based on their result"
-		"During a conversation, when it is necessary or you deem it necessary for a user to provide reference to a different result, respond with <Would you like to upload a different result?>"
 		"Never diagnose. Always recommend consulting a healthcare professional for medical decisions.",
 		"",
 	]
