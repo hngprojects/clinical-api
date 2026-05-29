@@ -26,14 +26,6 @@ API = "/api/v1"
 PIPELINE_TASK = "app.tasks.pipeline.run_lab_result_pipeline"
 
 
-def _lab_upload_payload(case_id: str) -> dict:
-	return {
-		"medical_case_id": case_id,
-		"file": {"name": "blood_panel.jpg", "url": "https://storage.example.com/blood_panel.jpg"},
-		"ocr_status": "pending",
-	}
-
-
 async def test_patient_opens_history_after_lab_upload(client, auth_headers):
 	"""After creating a case and uploading a report, GET /cases/{id}/full reflects pending OCR."""
 	case_resp = await client.post(f"{API}/cases", headers=auth_headers)
@@ -44,7 +36,7 @@ async def test_patient_opens_history_after_lab_upload(client, auth_headers):
 	with patch(PIPELINE_TASK, mock_task):
 		lab_resp = await client.post(
 			f"{API}/cases/{case_id}/lab-results",
-			json=_lab_upload_payload(case_id),
+			files={"file": ("blood_panel.jpg", b"fake-image-content", "image/jpeg")},
 			headers=auth_headers,
 		)
 	assert lab_resp.status_code == 201
