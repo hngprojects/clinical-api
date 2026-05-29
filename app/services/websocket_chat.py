@@ -92,6 +92,9 @@ async def build_system_prompt(
 	parts = [
 		"You are a medical assistant helping a patient understand their lab results.",
 		"Be clear, compassionate, and avoid unnecessary medical jargon.",
+		"Provide concise explanation of each metrics in a plane and simple manner"
+		"Allow the user understand their result and provide direct answers to their follow up question based on their result"
+		"During a conversation, when it is necessary or you deem it necessary for a user to provide reference to a different result, respond with <Would you like to upload a different result?>"
 		"Never diagnose. Always recommend consulting a healthcare professional for medical decisions.",
 		"",
 	]
@@ -146,8 +149,11 @@ def trim_history(
 	- We drop one message at a time from the oldest end until it fits
 	"""
 	system_tokens = _estimate_tokens(system_prompt)
+	logger.info("CURRENT SYS TOKEN => ", system_tokens)
 	new_msg_tokens = _estimate_tokens(new_user_message)
+	logger.info("CURRENT MSG TOKEN => ", new_msg_tokens)
 	budget = _MAX_TOKENS - system_tokens - new_msg_tokens
+	logger.info("BUDGET => ", budget)
 
 	if budget <= 0:
 		logger.warning("[chat] system prompt is very large — keeping last 2 messages only")
