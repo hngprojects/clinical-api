@@ -61,6 +61,8 @@ async def reset_password(
 	if not user or not user.is_active:
 		raise UnauthorizedError("Invalid or expired reset token")
 
+	if len(new_password) > 72:
+		raise BadRequestError("Password must be 72 characters or fewer.")
 	try:
 		validate_password_strength(new_password)
 	except ValueError as exc:

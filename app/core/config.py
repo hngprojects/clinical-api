@@ -44,8 +44,8 @@ class Settings(BaseSettings):
 	OTP_EXPIRES_MINUTES: int = 10
 	OTP_MAX_ATTEMPTS: int = 5
 	OTP_PEPPER: str = Field(min_length=32)
-	OTP_FAILURE_RATE_LIMIT: int = 5
-	OTP_FAILURE_RATE_WINDOW_SECONDS: int = 300
+	OTP_FAILURE_RATE_LIMIT: int = Field(default=5, ge=1)
+	OTP_FAILURE_RATE_WINDOW_SECONDS: int = Field(default=300, ge=1)
 
 	BREVO_API_KEY: str | None = Field(default=None)
 	BREVO_FROM_EMAIL: str = Field(default="")
