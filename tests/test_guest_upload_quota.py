@@ -125,8 +125,7 @@ async def test_guest_can_retry_upload_after_pipeline_failure(client: AsyncClient
 		assert first.status_code == 201
 		case_id = uuid.UUID(first.json()["data"]["case_id"])
 
-	async with AsyncSessionLocal() as session:
-		await purge_guest_failed_upload(session, case_id)
+	await purge_guest_failed_upload(case_id)
 
 	assert await _guest_upload_count(guest.guest_session_id) == 0
 

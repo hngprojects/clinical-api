@@ -651,12 +651,13 @@ async def _get_case_guest_session_id(session, case_id: UUID) -> UUID | None:
 
 
 async def _guest_pipeline_failed(session, case_id: UUID) -> None:
-	"""Purge guest case data after pipeline failure (caller should commit pipeline state first)."""
+	"""Purge guest case data after pipeline failure."""
 	if await _get_case_guest_session_id(session, case_id) is None:
 		return
+	await session.rollback()
 	from app.services.guest_upload import purge_guest_failed_upload
 
-	await purge_guest_failed_upload(session, case_id)
+	await purge_guest_failed_upload(case_id)
 
 
 async def _guest_pipeline_succeeded(case_id: UUID) -> None:
