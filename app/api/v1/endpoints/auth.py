@@ -301,7 +301,7 @@ async def forgot_password(
 	settings = get_settings()
 
 	await enforce_rate_limit(
-		key=f"rl:forgot-password:{request.email.strip().lower()}",
+		key=f"rl:forgot-password:{request.client.host}:{request.email.strip().lower()}",
 		limit=settings.SIGNUP_RATE_LIMIT,
 		window_seconds=settings.SIGNUP_RATE_WINDOW_SECONDS,
 	)
