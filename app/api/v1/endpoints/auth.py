@@ -63,6 +63,7 @@ from app.services.auth import (
 	verify_otp_for_user,
 )
 from app.services.auth.blocklist import is_token_revoked, revoke_token
+from app.services.auth.otp import OtpVerificationError
 from app.services.auth_sessions import AuthSessionIssue
 from app.services.guest import migrate_guest_session_to_user
 from app.services.oauth import (
@@ -331,13 +332,13 @@ async def verify_reset_otp(
 
 	try:
 		await verify_otp_for_user(otp_repo, user_id=user.id, purpose=OtpPurpose.RESET_PASSWORD, code=request.code)
-	except Exception:
+	except OtpVerificationError:
 		await session.commit()
 		raise UnauthorizedError("Invalid or expired reset OTP")
 
-	raw = await create_password_reset(reset_repo, user)
-	await session.commit()
 	settings = get_settings()
+	raw = await create_password_reset(reset_repo, user, expires_minutes=settings.PASSWORD_RESET_TOKEN_EXPIRES_MINUTES)
+	await session.commit()
 	return SuccessResponse(
 		message="Reset token issued.",
 		data=ResetTokenResponse(reset_token=raw, expires_in_seconds=settings.PASSWORD_RESET_TOKEN_EXPIRES_MINUTES * 60),

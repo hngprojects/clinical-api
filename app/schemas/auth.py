@@ -147,7 +147,6 @@ class ResetTokenResponse(BaseModel):
 
 
 class ResetPasswordRequest(BaseModel):
-	email: EmailStr
 	token: str = Field(min_length=6, max_length=512)
 	new_password: str = Field(min_length=8, max_length=72)
 
