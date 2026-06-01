@@ -83,14 +83,21 @@ class ResendOtpRequest(BaseModel):
 
 
 class TokenResponse(BaseModel):
-	"""Returned after a successful login or OTP verification."""
+	"""Returned after login, OTP verification, or token refresh."""
 
 	access_token: str
+	refresh_token: str
 	token_type: str = "bearer"
 	expires_in: int
 	user: UserResponse | None = None
 
 	model_config = ConfigDict(from_attributes=True)
+
+
+class RefreshRequest(BaseModel):
+	"""Optional body for token refresh (mobile clients without cookies)."""
+
+	refresh_token: str | None = Field(default=None, min_length=1)
 
 
 class TokenData(BaseModel):
