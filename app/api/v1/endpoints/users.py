@@ -5,6 +5,7 @@ from fastapi import APIRouter, Cookie, Depends, status
 from fastapi.security import HTTPAuthorizationCredentials
 
 from app.api.deps import AuthSessionManagerDep, CurrentUser, OtpRepo, TokenBlocklistRepo, UserRepo, bearer_scheme
+from app.core.config import get_settings
 from app.core.rate_limit import enforce_action_rate_limit
 from app.core.responses import SuccessResponse
 from app.models.otp import OtpPurpose
@@ -37,10 +38,11 @@ async def request_email_update(
 	otp_repo: OtpRepo,
 ) -> SuccessResponse:
 	"""Begin email update by sending a verification token to the new address."""
+	settings = get_settings()
 	await enforce_action_rate_limit(
 		key=f"rl:email-update-request:{current_user.id}",
-		limit=3,
-		window_seconds=600,
+		limit=settings.EMAIL_UPDATE_REQUEST_RATE_LIMIT,
+		window_seconds=settings.EMAIL_UPDATE_REQUEST_RATE_WINDOW_SECONDS,
 		message="Too many email update requests. Try again later.",
 	)
 	user, code = await start_email_change(
@@ -72,10 +74,11 @@ async def verify_email_update(
 	otp_repo: OtpRepo,
 ) -> SuccessResponse[UserResponse]:
 	"""Finalize email update if the provided token is valid."""
+	settings = get_settings()
 	await enforce_action_rate_limit(
 		key=f"rl:email-update-verify:{current_user.id}",
-		limit=5,
-		window_seconds=300,
+		limit=settings.EMAIL_UPDATE_VERIFY_RATE_LIMIT,
+		window_seconds=settings.EMAIL_UPDATE_VERIFY_RATE_WINDOW_SECONDS,
 		message="Too many email verification attempts. Try again later.",
 	)
 	updated_user = await verify_email_change(

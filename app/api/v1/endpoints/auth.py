@@ -1,3 +1,4 @@
+import hashlib
 import logging
 from datetime import datetime, timezone
 from typing import Annotated
@@ -59,6 +60,7 @@ from app.services.auth import (
 	verify_otp_for_user,
 )
 from app.services.auth.blocklist import is_token_revoked, revoke_token
+from app.services.auth.otp import OtpVerificationError
 from app.services.guest import migrate_guest_session_to_user
 from app.services.oauth import (
 	exchange_google_code,
@@ -198,10 +200,11 @@ async def verify_otp(
 ) -> SuccessResponse[TokenResponse]:
 	"""Verify the email-verification OTP sent after signup."""
 
+	settings = get_settings()
 	await enforce_action_rate_limit(
 		key=f"rl:verify-otp:{ip_hash}",
-		limit=5,
-		window_seconds=300,
+		limit=settings.OTP_FAILURE_RATE_LIMIT,
+		window_seconds=settings.OTP_FAILURE_RATE_WINDOW_SECONDS,
 		message="Too many OTP verification attempts. Try again later.",
 	)
 	try:
@@ -211,7 +214,7 @@ async def verify_otp(
 			email=payload.email,
 			code=payload.code,
 		)
-	except Exception:
+	except UnauthorizedError:
 		await record_verify_otp_failure(ip_hash)
 		raise
 
@@ -254,11 +257,12 @@ async def resend(
 	ip_hash: ClientIpHash,
 ) -> SuccessResponse[OtpDispatchResponse]:
 	"""Re-send the email-verification OTP."""
+	settings = get_settings()
 
 	await enforce_action_rate_limit(
 		key=f"rl:resend-otp:{ip_hash}",
-		limit=3,
-		window_seconds=300,
+		limit=settings.RESEND_OTP_RATE_LIMIT,
+		window_seconds=settings.RESEND_OTP_RATE_WINDOW_SECONDS,
 		message="Too many OTP resend requests. Try again later.",
 	)
 
@@ -314,11 +318,12 @@ async def forgot_password(
 	Always returns 200 regardless of whether the email is registered to prevent
 	user-enumeration attacks.
 	"""
+	settings = get_settings()
 
 	await enforce_action_rate_limit(
 		key=f"rl:forgot-password:{ip_hash}",
-		limit=3,
-		window_seconds=600,
+		limit=settings.FORGOT_PASSWORD_RATE_LIMIT,
+		window_seconds=settings.FORGOT_PASSWORD_RATE_WINDOW_SECONDS,
 		message="Too many password reset requests. Try again later.",
 	)
 
@@ -344,20 +349,23 @@ async def password_reset(
 	ip_hash: ClientIpHash,
 ) -> SuccessResponse:
 	"""Reset password using an OTP sent to the user's email."""
+	settings = get_settings()
 
+	normalized_email = request.email.strip().lower()
+	email_hash = hashlib.sha256(normalized_email.encode()).hexdigest()
 	await enforce_action_rate_limit(
-		key=f"rl:reset-password:{ip_hash}:{request.email}",
-		limit=5,
-		window_seconds=600,
+		key=f"rl:reset-password:{ip_hash}:{email_hash}",
+		limit=settings.RESET_PASSWORD_RATE_LIMIT,
+		window_seconds=settings.RESET_PASSWORD_RATE_WINDOW_SECONDS,
 		message="Too many password reset attempts. Try again later.",
 	)
-	user = await user_repo.get_by_email(request.email.strip().lower())
+	user = await user_repo.get_by_email(normalized_email)
 	if not user:
 		raise UnauthorizedError("Invalid or expired reset OTP")
 
 	try:
 		await verify_otp_for_user(otp_repo, user_id=user.id, purpose=OtpPurpose.RESET_PASSWORD, code=request.token)
-	except Exception:
+	except (UnauthorizedError, OtpVerificationError):
 		await user_repo.commit()
 		raise UnauthorizedError("Invalid or expired reset OTP")
 

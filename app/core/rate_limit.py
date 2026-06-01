@@ -9,6 +9,17 @@ from app.core.redis_client import get_redis
 
 async def enforce_rate_limit(*, key: str, limit: int, window_seconds: int) -> None:
 	redis = await get_redis()
+	if hasattr(redis, "eval"):
+		lua = (
+			"local v = redis.call('INCR', KEYS[1])\n"
+			"if v == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end\n"
+			"if v > tonumber(ARGV[2]) then return -1 end\n"
+			"return v"
+		)
+		result = await redis.eval(lua, 1, key, window_seconds, limit)
+		if int(result) == -1:
+			raise RateLimitExceeded()
+		return
 	count = await redis.incr(key)
 	if count == 1:
 		await redis.expire(key, window_seconds)
@@ -56,6 +67,17 @@ async def clear_login_failures(ip_hash: str) -> None:
 
 async def enforce_action_rate_limit(*, key: str, limit: int, window_seconds: int, message: str) -> None:
 	redis = await get_redis()
+	if hasattr(redis, "eval"):
+		lua = (
+			"local v = redis.call('INCR', KEYS[1])\n"
+			"if v == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end\n"
+			"if v > tonumber(ARGV[2]) then return -1 end\n"
+			"return v"
+		)
+		result = await redis.eval(lua, 1, key, window_seconds, limit)
+		if int(result) == -1:
+			raise RateLimitExceeded(message)
+		return
 	count = await redis.incr(key)
 	if count == 1:
 		await redis.expire(key, window_seconds)
@@ -69,10 +91,9 @@ def _verify_otp_fail_key(ip_hash: str) -> str:
 
 async def record_verify_otp_failure(ip_hash: str) -> None:
 	settings = get_settings()
-	redis = await get_redis()
-	key = _verify_otp_fail_key(ip_hash)
-	count = await redis.incr(key)
-	if count == 1:
-		await redis.expire(key, settings.OTP_FAILURE_RATE_WINDOW_SECONDS)
-	if count > settings.OTP_FAILURE_RATE_LIMIT:
-		raise RateLimitExceeded("Too many OTP attempts")
+	await enforce_action_rate_limit(
+		key=_verify_otp_fail_key(ip_hash),
+		limit=settings.OTP_FAILURE_RATE_LIMIT,
+		window_seconds=settings.OTP_FAILURE_RATE_WINDOW_SECONDS,
+		message="Too many OTP verification attempts. Try again later.",
+	)
