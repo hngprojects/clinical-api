@@ -17,6 +17,7 @@ from app.api.deps import (
 	GuestSessionId,
 	MedicalCaseRepo,
 	OtpRepo,
+	PasswordResetRepo,
 	TokenBlocklistRepo,
 	UserRepo,
 	bearer_scheme,
@@ -43,18 +44,22 @@ from app.schemas.auth import (
 	SignupRequest,
 	TokenResponse,
 	VerifyOtpRequest,
+	VerifyResetOtpRequest,
+	ResetTokenResponse,
 )
 from app.schemas.user import UserResponse
 from app.services.auth import (
 	authenticate_credentials,
 	authenticate_otp,
 	create_otp_for_user,
+	create_password_reset,
 	decode_access_token,
 	decode_refresh_token,
 	otp_ttl_seconds,
 	resend_otp,
 	revoke_refresh_token,
 	signup_user,
+	reset_password,
 	verify_otp_for_user,
 )
 from app.services.auth.blocklist import is_token_revoked, revoke_token
@@ -292,6 +297,14 @@ async def forgot_password(
 	Always returns 200 regardless of whether the email is registered to prevent
 	user-enumeration attacks.
 	"""
+	settings = get_settings()
+	
+	await enforce_rate_limit(
+		key=f"rl:forgot-password:{request.email.strip().lower()}",
+		limit=settings.SIGNUP_RATE_LIMIT,
+		window_seconds=settings.SIGNUP_RATE_WINDOW_SECONDS,
+	)
+
 	user = await user_repo.get_by_email(request.email.strip().lower())
 	if user:
 		_, code = await create_otp_for_user(otp_repo, user_id=user.id, purpose=OtpPurpose.RESET_PASSWORD)
@@ -303,6 +316,35 @@ async def forgot_password(
 	return SuccessResponse(message="If this email is registered, you'll receive a reset code shortly.")
 
 
+
+@router.post("/verify-reset-otp", response_model=SuccessResponse[ResetTokenResponse])
+async def verify_reset_otp(
+	request: VerifyResetOtpRequest,
+	user_repo: UserRepo,
+	otp_repo: OtpRepo,
+	reset_repo: PasswordResetRepo,
+	session: DBSession,
+) -> SuccessResponse[ResetTokenResponse]:
+	"""Verify a password-reset OTP and issue an opaque reset token for final password change."""
+	user = await user_repo.get_by_email(request.email.strip().lower())
+	if not user:
+		raise UnauthorizedError("Invalid or expired reset OTP")
+
+	try:
+		await verify_otp_for_user(otp_repo, user_id=user.id, purpose=OtpPurpose.RESET_PASSWORD, code=request.code)
+	except Exception:
+		await session.commit()
+		raise UnauthorizedError("Invalid or expired reset OTP")
+
+	raw = await create_password_reset(reset_repo, user)
+	await session.commit()
+	settings = get_settings()
+	return SuccessResponse(
+		message="Reset token issued.",
+		data=ResetTokenResponse(reset_token=raw, expires_in_seconds=settings.PASSWORD_RESET_TOKEN_EXPIRES_MINUTES * 60),
+	)
+
+
 @router.post(
 	"/reset-password",
 	response_model=SuccessResponse,
@@ -310,20 +352,14 @@ async def forgot_password(
 async def password_reset(
 	request: ResetPasswordRequest,
 	user_repo: UserRepo,
-	otp_repo: OtpRepo,
+	reset_repo: PasswordResetRepo,
 ) -> SuccessResponse:
-	"""Reset password using an OTP sent to the user's email."""
-	user = await user_repo.get_by_email(request.email.strip().lower())
-	if not user:
-		raise UnauthorizedError("Invalid or expired reset OTP")
-
+	"""Reset password using an opaque reset token previously issued after OTP verification."""
 	try:
-		await verify_otp_for_user(otp_repo, user_id=user.id, purpose=OtpPurpose.RESET_PASSWORD, code=request.token)
-	except Exception:
-		await user_repo.commit()
-		raise UnauthorizedError("Invalid or expired reset OTP")
+		await reset_password(reset_repo, user_repo, raw_token=request.token, new_password=request.new_password)
+	except UnauthorizedError:
+		raise UnauthorizedError("Invalid or expired reset token")
 
-	user.password_hash = hash_password(request.new_password)
 	await user_repo.commit()
 	return SuccessResponse(message="Password reset successfully.")
 
