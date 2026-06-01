@@ -298,7 +298,7 @@ async def forgot_password(
 	user-enumeration attacks.
 	"""
 	settings = get_settings()
-	
+
 	await enforce_rate_limit(
 		key=f"rl:forgot-password:{request.email.strip().lower()}",
 		limit=settings.SIGNUP_RATE_LIMIT,
@@ -314,7 +314,6 @@ async def forgot_password(
 		except Exception:
 			logger.exception("Failed to enqueue password reset OTP for %s", _mask_email(user.email))
 	return SuccessResponse(message="If this email is registered, you'll receive a reset code shortly.")
-
 
 
 @router.post("/verify-reset-otp", response_model=SuccessResponse[ResetTokenResponse])
