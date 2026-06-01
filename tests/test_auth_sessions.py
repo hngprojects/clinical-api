@@ -81,6 +81,7 @@ async def test_login_creates_auth_session_row(client: AsyncClient) -> None:
 	assert login.status_code == 200
 	refresh = login.cookies.get("refresh_token")
 	assert refresh
+	assert login.json()["data"]["refresh_token"] == refresh
 
 	async with AsyncSessionLocal() as db:
 		user = (await db.execute(select(User).where(User.email == email))).scalar_one()
