@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 # ── Client → Server
 # These are messages the client sends to us. We validate them with Pydantic
@@ -9,11 +9,15 @@ from pydantic import BaseModel, field_validator
 
 class InitMessage(BaseModel):
 	"""First message the client sends after the WebSocket connection opens.
-	Must arrive within 10 seconds or we close the connection."""
+	Must arrive within 10 seconds or we close the connection.
+
+	Exactly one of `token` (JWT for authenticated users) or
+	`guest_session_id` (UUID for guest users) must be supplied."""
 
 	type: str
 	case_id: UUID
-	token: str  # the user's JWT access token — auth happens here, not in headers
+	token: str | None = None
+	guest_session_id: UUID | None = None
 
 	@field_validator("type")
 	@classmethod
@@ -21,6 +25,12 @@ class InitMessage(BaseModel):
 		if v != "init":
 			raise ValueError("type must be 'init'")
 		return v
+
+	@model_validator(mode="after")
+	def must_have_auth(self) -> "InitMessage":
+		if self.token is None and self.guest_session_id is None:
+			raise ValueError("Either 'token' or 'guest_session_id' must be provided.")
+		return self
 
 
 class UserMessage(BaseModel):
