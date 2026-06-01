@@ -37,6 +37,7 @@ from app.schemas.auth import (
 	ForgotPasswordRequest,
 	LoginRequest,
 	OtpDispatchResponse,
+	RefreshRequest,
 	ResendOtpRequest,
 	ResetPasswordRequest,
 	SignupRequest,
@@ -57,6 +58,7 @@ from app.services.auth import (
 	verify_otp_for_user,
 )
 from app.services.auth.blocklist import is_token_revoked, revoke_token
+from app.services.auth_sessions import AuthSessionIssue
 from app.services.guest import migrate_guest_session_to_user
 from app.services.oauth import (
 	exchange_google_code,
@@ -87,6 +89,16 @@ def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
 		secure=settings.COOKIE_SECURE,
 		samesite=settings.COOKIE_SAMESITE,
 		max_age=settings.JWT_REFRESH_TOKEN_EXPIRES_MINUTES * 60,
+	)
+
+
+def _token_response(issue: AuthSessionIssue, *, user: UserResponse | None = None) -> TokenResponse:
+	return TokenResponse(
+		access_token=issue.access_token,
+		refresh_token=issue.refresh_token,
+		token_type="bearer",
+		expires_in=issue.expires_in,
+		user=user,
 	)
 
 
@@ -168,12 +180,7 @@ async def login(
 	_set_refresh_cookie(response, issue.refresh_token)
 	return SuccessResponse(
 		message="Logged in successfully.",
-		data=TokenResponse(
-			access_token=issue.access_token,
-			token_type="bearer",
-			expires_in=issue.expires_in,
-			user=UserResponse.model_validate(user),
-		),
+		data=_token_response(issue, user=UserResponse.model_validate(user)),
 	)
 
 
@@ -219,12 +226,7 @@ async def verify_otp(
 	_set_refresh_cookie(response, issue.refresh_token)
 	return SuccessResponse(
 		message="Email verified. Welcome!",
-		data=TokenResponse(
-			access_token=issue.access_token,
-			token_type="bearer",
-			expires_in=issue.expires_in,
-			user=UserResponse.model_validate(user),
-		),
+		data=_token_response(issue, user=UserResponse.model_validate(user)),
 	)
 
 
@@ -444,7 +446,11 @@ async def google_callback(
 
 	settings = get_settings()
 	base_redirect = oauth_ctx.return_url if oauth_ctx and oauth_ctx.return_url else settings.FRONTEND_AUTH_CALLBACK_URL
-	redirect_url = build_redirect_url(base_redirect, app_access_token)
+	redirect_url = build_redirect_url(
+		base_redirect,
+		app_access_token,
+		refresh_token=issue.refresh_token,
+	)
 	return RedirectResponse(url=redirect_url)
 
 
@@ -454,17 +460,20 @@ async def refresh(
 	auth_manager: AuthSessionManagerDep,
 	blocklist_repo: TokenBlocklistRepo,
 	response: Response,
-	refresh_token: Annotated[str | None, Cookie()] = None,
+	payload: RefreshRequest | None = None,
+	refresh_token_cookie: Annotated[str | None, Cookie(alias="refresh_token")] = None,
 ) -> SuccessResponse[TokenResponse]:
 	"""Refresh the access and refresh tokens.
 
-	Validates the inbound refresh token against auth_sessions, blocklists the
-	old refresh JWT, then rotates to a new access/refresh pair on the same device.
+	Accepts the refresh token from the HttpOnly cookie (web) or request body
+	(mobile). Validates against auth_sessions, blocklists the old refresh JWT,
+	then rotates to a new access/refresh pair on the same device.
 	"""
+	refresh_token = refresh_token_cookie or (payload.refresh_token if payload else None)
 	if not refresh_token:
-		raise UnauthorizedError("Refresh token cookie is required")
-	payload = decode_refresh_token(refresh_token)
-	refresh_token_jti: str = payload["jti"]
+		raise UnauthorizedError("Refresh token is required")
+	payload_decoded = decode_refresh_token(refresh_token)
+	refresh_token_jti: str = payload_decoded["jti"]
 	if await is_token_revoked(blocklist_repo, refresh_token_jti):
 		raise UnauthorizedError("Refresh token has been revoked")
 	await revoke_refresh_token(refresh_token, blocklist_repo)
@@ -473,11 +482,7 @@ async def refresh(
 	_set_refresh_cookie(response, issue.refresh_token)
 	return SuccessResponse(
 		message="Tokens refreshed",
-		data=TokenResponse(
-			access_token=issue.access_token,
-			token_type="bearer",
-			expires_in=issue.expires_in,
-		),
+		data=_token_response(issue),
 	)
 
 
