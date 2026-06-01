@@ -93,6 +93,7 @@ async def complete_guest_upload_quota(case_id: UUID) -> None:
 			await manager.increment_upload(guest_session_id)
 		except Exception:
 			await clear_guest_upload_counted(case_id)
+			await release_guest_upload_lock(guest_session_id)
 			raise
 
 	if guest_session_id is not None:
