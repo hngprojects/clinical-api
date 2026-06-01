@@ -209,10 +209,17 @@ async def test_reset_password_accepts_otp_and_changes_password(client: AsyncClie
 		forgot = await client.post("/api/v1/auth/forgot-password", json={"email": user.email})
 	assert forgot.status_code == 200
 	code = mock_delay.call_args.kwargs["code"]
+	# Verify OTP and receive an opaque reset token
+	verify = await client.post(
+		"/api/v1/auth/verify-reset-otp",
+		json={"email": user.email, "code": code},
+	)
+	assert verify.status_code == 200
+	reset_token = verify.json()["data"]["reset_token"]
 
 	reset = await client.post(
 		"/api/v1/auth/reset-password",
-		json={"email": user.email, "token": code, "new_password": new_password},
+		json={"email": user.email, "token": reset_token, "new_password": new_password},
 	)
 	assert reset.status_code == 200
 	assert reset.json()["message"] == "Password reset successfully."
