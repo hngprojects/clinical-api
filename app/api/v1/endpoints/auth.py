@@ -31,7 +31,7 @@ from app.core.rate_limit import (
 	record_login_failure,
 )
 from app.core.responses import SuccessResponse
-from app.core.security import hash_opaque_token, hash_password
+from app.core.security import hash_opaque_token
 from app.models.otp import OtpPurpose
 from app.schemas.auth import (
 	AuthSessionResponse,
@@ -41,11 +41,11 @@ from app.schemas.auth import (
 	RefreshRequest,
 	ResendOtpRequest,
 	ResetPasswordRequest,
+	ResetTokenResponse,
 	SignupRequest,
 	TokenResponse,
 	VerifyOtpRequest,
 	VerifyResetOtpRequest,
-	ResetTokenResponse,
 )
 from app.schemas.user import UserResponse
 from app.services.auth import (
@@ -57,9 +57,9 @@ from app.services.auth import (
 	decode_refresh_token,
 	otp_ttl_seconds,
 	resend_otp,
+	reset_password,
 	revoke_refresh_token,
 	signup_user,
-	reset_password,
 	verify_otp_for_user,
 )
 from app.services.auth.blocklist import is_token_revoked, revoke_token
