@@ -288,7 +288,8 @@ async def me(current_user: CurrentUser) -> SuccessResponse[UserResponse]:
 # Password reset
 @router.post("/forgot-password", response_model=SuccessResponse)
 async def forgot_password(
-	request: ForgotPasswordRequest,
+	payload: ForgotPasswordRequest,
+	http_request: Request,
 	user_repo: UserRepo,
 	otp_repo: OtpRepo,
 	session: DBSession,
@@ -300,13 +301,14 @@ async def forgot_password(
 	"""
 	settings = get_settings()
 
+	client_host = http_request.client.host if http_request.client else "unknown"
 	await enforce_rate_limit(
-		key=f"rl:forgot-password:{request.client.host}:{request.email.strip().lower()}",
+		key=f"rl:forgot-password:{client_host}:{payload.email.strip().lower()}",
 		limit=settings.SIGNUP_RATE_LIMIT,
 		window_seconds=settings.SIGNUP_RATE_WINDOW_SECONDS,
 	)
 
-	user = await user_repo.get_by_email(request.email.strip().lower())
+	user = await user_repo.get_by_email(payload.email.strip().lower())
 	if user:
 		_, code = await create_otp_for_user(otp_repo, user_id=user.id, purpose=OtpPurpose.RESET_PASSWORD)
 		await session.commit()
