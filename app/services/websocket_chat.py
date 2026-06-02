@@ -182,7 +182,7 @@ def trim_history(
 async def save_user_message(
 	chat_repo: ChatRepository,
 	case_id: uuid.UUID,
-	user_id: uuid.UUID,
+	user_id: uuid.UUID | None,
 	text: str,
 ) -> Chat:
 	"""

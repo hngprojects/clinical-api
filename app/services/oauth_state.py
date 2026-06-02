@@ -45,10 +45,12 @@ def _normalize_return_url(candidate: str) -> str:
 	return urlunparse(parsed_candidate._replace(query="", fragment=""))
 
 
-def build_redirect_url(base_redirect: str, access_token: str) -> str:
+def build_redirect_url(base_redirect: str, access_token: str, *, refresh_token: str | None = None) -> str:
 	parsed_redirect = urlparse(base_redirect)
 	query_params = dict(parse_qsl(parsed_redirect.query, keep_blank_values=True))
 	query_params["access_token"] = access_token
+	if refresh_token:
+		query_params["refresh_token"] = refresh_token
 	return urlunparse(parsed_redirect._replace(query=urlencode(query_params)))
 
 
