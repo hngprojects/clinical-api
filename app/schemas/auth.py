@@ -134,8 +134,19 @@ class ForgotPasswordRequest(BaseModel):
 	email: EmailStr
 
 
-class ResetPasswordRequest(BaseModel):
+class VerifyResetOtpRequest(BaseModel):
+	model_config = ConfigDict(str_strip_whitespace=True)
+
 	email: EmailStr
+	code: str = Field(min_length=4, max_length=12)
+
+
+class ResetTokenResponse(BaseModel):
+	reset_token: str
+	expires_in_seconds: int
+
+
+class ResetPasswordRequest(BaseModel):
 	token: str = Field(min_length=6, max_length=512)
 	new_password: str = Field(min_length=8, max_length=72)
 
