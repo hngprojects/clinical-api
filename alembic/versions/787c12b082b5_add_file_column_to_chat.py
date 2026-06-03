@@ -23,7 +23,7 @@ def upgrade() -> None:
     """Upgrade schema."""
     # Add the 'file' value to the sendertype enum
     conn = op.get_bind()
-    conn.execution_options(isolation_level="AUTOCOMMIT").execute(
+    conn.execute(isolation_level="AUTOCOMMIT").execute(
     sa.text("ALTER TYPE sendertype ADD VALUE IF NOT EXISTS 'file'")
 )
     # Add the file JSONB column
