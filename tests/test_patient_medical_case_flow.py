@@ -50,7 +50,11 @@ async def test_patient_opens_history_after_lab_upload(client, auth_headers):
 	assert payload["lab_results"][0]["ocr_status"] == "pending"
 	assert payload["lab_results"][0]["extracted_values"] is None
 	assert payload["interpretation"] is None
-	assert payload["chats"] == []
+	# After upload, a file-card chat message is created automatically
+	assert len(payload["chats"]) == 1
+	assert payload["chats"][0]["sender_type"] == "file"
+	assert payload["chats"][0]["file"]["mime_type"] == "image/jpeg"
+	assert payload["chats"][0]["file"]["name"] == "blood_panel.jpg"
 
 
 async def test_patient_history_matches_chat_thread_when_ready(client, test_user, auth_headers):

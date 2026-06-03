@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum, ForeignKey
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -19,12 +19,25 @@ class SenderType(str, enum.Enum):
 
 	PATIENT = "patient"
 	AI = "ai"
+	FILE = "file"
 
 
 class Chat(Base):
 	"""Model representing a chat conversation between a user and the system."""
 
 	__tablename__ = "chat"
+
+	__table_args__ = (
+		# Partial unique index: only non-null lab_result_id values are enforced unique.
+		# This prevents duplicate file-card chat messages for the same lab_result
+		# under concurrent requests — a database-level guarantee.
+		Index(
+			"ix_chat_lab_result_id_unique",
+			"lab_result_id",
+			unique=True,
+			postgresql_where=text("lab_result_id IS NOT NULL"),
+		),
+	)
 
 	id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 	user_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -33,10 +46,16 @@ class Chat(Base):
 	medical_case_id: Mapped[uuid.UUID] = mapped_column(
 		UUID(as_uuid=True), ForeignKey("medical_cases.id", ondelete="CASCADE"), nullable=False, index=True
 	)
+	lab_result_id: Mapped[uuid.UUID | None] = mapped_column(
+		UUID(as_uuid=True), ForeignKey("lab_results.id", ondelete="SET NULL"), nullable=True, index=True
+	)
 	sender_type: Mapped[SenderType] = mapped_column(
 		Enum(SenderType, name="sendertype", values_callable=lambda obj: [e.value for e in obj]), nullable=False
 	)
 	content: Mapped[dict] = mapped_column(JSONB, nullable=False)  # Storing message content as JSON for flexibility
+	file: Mapped[dict | None] = mapped_column(
+		JSONB, nullable=True
+	)  # File metadata for file-card messages (name/url/mime_type)
 	sent_at: Mapped[datetime] = mapped_column(
 		DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
 	)
