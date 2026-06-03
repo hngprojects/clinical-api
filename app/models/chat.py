@@ -47,7 +47,7 @@ class Chat(Base):
 		UUID(as_uuid=True), ForeignKey("medical_cases.id", ondelete="CASCADE"), nullable=False, index=True
 	)
 	lab_result_id: Mapped[uuid.UUID | None] = mapped_column(
-    UUID(as_uuid=True), ForeignKey("lab_results.id", ondelete="SET NULL"), nullable=True
+		UUID(as_uuid=True), ForeignKey("lab_results.id", ondelete="SET NULL"), nullable=True
 	)
 	sender_type: Mapped[SenderType] = mapped_column(
 		Enum(SenderType, name="sendertype", values_callable=lambda obj: [e.value for e in obj]), nullable=False
