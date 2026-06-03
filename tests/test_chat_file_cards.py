@@ -12,45 +12,32 @@ Flow tested:
 from __future__ import annotations
 
 import uuid
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
-from app.db.session import AsyncSessionLocal
-from app.models.user import User, UserRole
-from app.services.auth.tokens import create_access_token
-
 API = "/api/v1"
 
-
-async def _create_test_user() -> tuple[User, dict[str, str]]:
-    """Create a user and return (user, auth_headers)."""
-    user = User(
-        id=uuid.uuid4(),
-        email=f"filecard_{uuid.uuid4().hex[:8]}@clinsights.dev",
-        first_name="FileCard",
-        last_name="Test",
-        role=UserRole.PATIENT,
-        is_active=True,
-        is_email_verified=True,
-    )
-    async with AsyncSessionLocal() as session:
-        session.add(user)
-        await session.commit()
-        await session.refresh(user)
-
-    token, _ = create_access_token(user.id)
-    headers = {"Authorization": f"Bearer {token}"}
-    return user, headers
+# upload_medical_file is imported inside each function body in lab_result.py
+# (e.g. `from app.services.storage import upload_medical_file`), so it never
+# exists as a module-level attribute on app.services.lab_result.
+# Patch the definition site instead — that's where the name always lives.
+_STORAGE_PATCH = "app.services.storage.upload_medical_file"
+_PIPELINE_PATCH = "app.tasks.pipeline.run_lab_result_pipeline"
 
 
-async def _cleanup_user(user: User) -> None:
-    async with AsyncSessionLocal() as session:
-        existing = await session.get(User, user.id)
-        if existing:
-            await session.delete(existing)
-            await session.commit()
+def _fake_upload(filename: str, mime_type: str) -> dict:
+    """Mirrors the real dict that upload_medical_file returns.
+    Keys must match exactly what lab_result.py reads:
+      file_metadata["filename"], file_metadata["file_url"], file_metadata["mime_type"]
+    """
+    return {
+        "filename": filename,
+        "file_url": f"http://testserver/media/{filename}",
+        "mime_type": mime_type,
+    }
 
 
 async def test_upload_image_creates_file_card_in_chat(client, test_user, auth_headers):
@@ -60,12 +47,19 @@ async def test_upload_image_creates_file_card_in_chat(client, test_user, auth_he
     assert case_resp.status_code == 201
     case_id = case_resp.json()["data"]["id"]
 
-    # 2. Upload an image
-    resp = await client.post(
-        f"{API}/cases/{case_id}/lab-results",
-        files={"file": ("blood_panel.jpg", b"fake-image-content", "image/jpeg")},
-        headers=auth_headers,
-    )
+    # 2. Upload an image (mock storage + Celery so no Redis/FS needed)
+    mock_pipeline = MagicMock()
+    mock_pipeline.delay = MagicMock()
+    with (
+        patch(_STORAGE_PATCH, new_callable=AsyncMock,
+              return_value=_fake_upload("blood_panel.jpg", "image/jpeg")),
+        patch(_PIPELINE_PATCH, mock_pipeline),
+    ):
+        resp = await client.post(
+            f"{API}/cases/{case_id}/lab-results",
+            files={"file": ("blood_panel.jpg", b"fake-image-content", "image/jpeg")},
+            headers=auth_headers,
+        )
     assert resp.status_code == 201
 
     # 3. Fetch chat history
@@ -73,10 +67,8 @@ async def test_upload_image_creates_file_card_in_chat(client, test_user, auth_he
     assert chat_resp.status_code == 200
 
     messages = chat_resp.json()["data"]
-    # Should have at least one message (the file card)
     assert len(messages) >= 1
 
-    # Find the file-card message
     file_messages = [m for m in messages if m["sender_type"] == "file"]
     assert len(file_messages) >= 1, (
         f"No file-card message found in chat history. Messages: {messages}"
@@ -86,27 +78,30 @@ async def test_upload_image_creates_file_card_in_chat(client, test_user, auth_he
     assert file_msg["file"]["name"] == "blood_panel.jpg"
     assert file_msg["file"]["mime_type"] == "image/jpeg"
     assert file_msg["file"]["url"].startswith("http://")
-    # content should be empty text for file messages
     assert file_msg["content"] == {"text": ""}
     assert file_msg["sender_type"] == "file"
 
 
 async def test_upload_pdf_creates_file_card_in_chat(client, test_user, auth_headers):
     """Upload a PDF → Chat history includes a file-card message."""
-    # 1. Create a case
     case_resp = await client.post(f"{API}/cases", headers=auth_headers)
     assert case_resp.status_code == 201
     case_id = case_resp.json()["data"]["id"]
 
-    # 2. Upload a PDF
-    resp = await client.post(
-        f"{API}/cases/{case_id}/lab-results",
-        files={"file": ("report.pdf", b"%PDF-fake-content", "application/pdf")},
-        headers=auth_headers,
-    )
+    mock_pipeline = MagicMock()
+    mock_pipeline.delay = MagicMock()
+    with (
+        patch(_STORAGE_PATCH, new_callable=AsyncMock,
+              return_value=_fake_upload("report.pdf", "application/pdf")),
+        patch(_PIPELINE_PATCH, mock_pipeline),
+    ):
+        resp = await client.post(
+            f"{API}/cases/{case_id}/lab-results",
+            files={"file": ("report.pdf", b"%PDF-fake-content", "application/pdf")},
+            headers=auth_headers,
+        )
     assert resp.status_code == 201
 
-    # 3. Fetch chat history
     chat_resp = await client.get(f"{API}/cases/{case_id}/chat", headers=auth_headers)
     assert chat_resp.status_code == 200
 
@@ -122,15 +117,21 @@ async def test_upload_pdf_creates_file_card_in_chat(client, test_user, auth_head
 
 async def test_upload_creates_file_card_via_upload_endpoint(client, test_user, auth_headers):
     """POST /upload → the chat history also gets a file-card message."""
-    resp = await client.post(
-        f"{API}/upload",
-        files={"file": ("xray.png", b"fake-png-content", "image/png")},
-        headers=auth_headers,
-    )
+    mock_pipeline = MagicMock()
+    mock_pipeline.delay = MagicMock()
+    with (
+        patch(_STORAGE_PATCH, new_callable=AsyncMock,
+              return_value=_fake_upload("xray.png", "image/png")),
+        patch(_PIPELINE_PATCH, mock_pipeline),
+    ):
+        resp = await client.post(
+            f"{API}/upload",
+            files={"file": ("xray.png", b"fake-png-content", "image/png")},
+            headers=auth_headers,
+        )
     assert resp.status_code == 201
     case_id = resp.json()["data"]["case_id"]
 
-    # Fetch chat history
     chat_resp = await client.get(f"{API}/cases/{case_id}/chat", headers=auth_headers)
     assert chat_resp.status_code == 200
 
@@ -145,20 +146,24 @@ async def test_upload_creates_file_card_via_upload_endpoint(client, test_user, a
 
 async def test_file_card_appears_in_unified_timeline(client, test_user, auth_headers):
     """File cards and text messages appear interleaved by sent_at."""
-    # 1. Create a case
     case_resp = await client.post(f"{API}/cases", headers=auth_headers)
     assert case_resp.status_code == 201
     case_id = case_resp.json()["data"]["id"]
 
-    # 2. Upload a file
-    resp = await client.post(
-        f"{API}/cases/{case_id}/lab-results",
-        files={"file": ("lab.jpg", b"fake-image", "image/jpeg")},
-        headers=auth_headers,
-    )
+    mock_pipeline = MagicMock()
+    mock_pipeline.delay = MagicMock()
+    with (
+        patch(_STORAGE_PATCH, new_callable=AsyncMock,
+              return_value=_fake_upload("lab.jpg", "image/jpeg")),
+        patch(_PIPELINE_PATCH, mock_pipeline),
+    ):
+        resp = await client.post(
+            f"{API}/cases/{case_id}/lab-results",
+            files={"file": ("lab.jpg", b"fake-image", "image/jpeg")},
+            headers=auth_headers,
+        )
     assert resp.status_code == 201
 
-    # 3. Send a text message
     msg_resp = await client.post(
         f"{API}/cases/{case_id}/chat",
         json={
@@ -170,17 +175,14 @@ async def test_file_card_appears_in_unified_timeline(client, test_user, auth_hea
     )
     assert msg_resp.status_code == 201
 
-    # 4. Fetch chat history
     chat_resp = await client.get(f"{API}/cases/{case_id}/chat", headers=auth_headers)
     assert chat_resp.status_code == 200
 
     messages = chat_resp.json()["data"]
-    # Should contain both a file card and a text message
     sender_types = [m["sender_type"] for m in messages]
     assert "file" in sender_types
     assert "patient" in sender_types
 
-    # Verify chronological order
     timestamps = [m["sent_at"] for m in messages]
     assert timestamps == sorted(timestamps), "Messages should be in chronological order"
 
@@ -190,44 +192,59 @@ async def test_chat_endpoint_is_sufficient_alone(client, test_user, auth_headers
     case_resp = await client.post(f"{API}/cases", headers=auth_headers)
     case_id = case_resp.json()["data"]["id"]
 
-    await client.post(
-        f"{API}/cases/{case_id}/lab-results",
-        files={"file": ("test.jpg", b"fake", "image/jpeg")},
-        headers=auth_headers,
-    )
+    mock_pipeline = MagicMock()
+    mock_pipeline.delay = MagicMock()
+    with (
+        patch(_STORAGE_PATCH, new_callable=AsyncMock,
+              return_value=_fake_upload("test.jpg", "image/jpeg")),
+        patch(_PIPELINE_PATCH, mock_pipeline),
+    ):
+        await client.post(
+            f"{API}/cases/{case_id}/lab-results",
+            files={"file": ("test.jpg", b"fake", "image/jpeg")},
+            headers=auth_headers,
+        )
 
-    # Get just the chat endpoint — no other endpoint needed
     chat_resp = await client.get(f"{API}/cases/{case_id}/chat", headers=auth_headers)
     assert chat_resp.status_code == 200
 
     data = chat_resp.json()["data"]
     assert len(data) >= 1
 
+    # Explicitly assert at least one file-card message exists (avoids vacuous pass)
+    file_messages = [m for m in data if m["sender_type"] == "file"]
+    assert len(file_messages) >= 1, (
+        f"Expected at least one file-card message, got none. Messages: {data}"
+    )
+
     # Every file message has all required fields
-    for msg in data:
-        if msg["sender_type"] == "file":
-            f = msg["file"]
-            assert "name" in f and isinstance(f["name"], str)
-            assert "url" in f and isinstance(f["url"], str)
-            assert "mime_type" in f and isinstance(f["mime_type"], str)
-            # Frontend can discriminate type
-            assert f["mime_type"] in (
-                "image/jpeg", "image/png", "image/webp", "application/pdf"
-            )
+    for msg in file_messages:
+        f = msg["file"]
+        assert "name" in f and isinstance(f["name"], str)
+        assert "url" in f and isinstance(f["url"], str)
+        assert "mime_type" in f and isinstance(f["mime_type"], str)
+        assert f["mime_type"] in (
+            "image/jpeg", "image/png", "image/webp", "application/pdf"
+        )
 
 
 async def test_guest_upload_also_creates_file_card(client, test_user, auth_headers):
     """Guest users uploading files also get file-card messages in chat."""
-    # Use the authenticated user and the /upload endpoint
-    # (guest testing is complex; this verifies the mechanism works for any user)
     case_resp = await client.post(f"{API}/cases", headers=auth_headers)
     case_id = case_resp.json()["data"]["id"]
 
-    await client.post(
-        f"{API}/cases/{case_id}/lab-results",
-        files={"file": ("guest_scan.jpg", b"fake-guest", "image/jpeg")},
-        headers=auth_headers,
-    )
+    mock_pipeline = MagicMock()
+    mock_pipeline.delay = MagicMock()
+    with (
+        patch(_STORAGE_PATCH, new_callable=AsyncMock,
+              return_value=_fake_upload("guest_scan.jpg", "image/jpeg")),
+        patch(_PIPELINE_PATCH, mock_pipeline),
+    ):
+        await client.post(
+            f"{API}/cases/{case_id}/lab-results",
+            files={"file": ("guest_scan.jpg", b"fake-guest", "image/jpeg")},
+            headers=auth_headers,
+        )
 
     chat_resp = await client.get(f"{API}/cases/{case_id}/chat", headers=auth_headers)
     file_msgs = [m for m in chat_resp.json()["data"] if m["sender_type"] == "file"]

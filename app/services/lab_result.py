@@ -61,6 +61,7 @@ async def upload_lab_result(
 		ocr_status=OCRStatus.PENDING,
 	)
 	lab_repo.add(lab_result)
+	await lab_repo._session.flush() 
 
 	# Create file-card chat message (same session, defer commit)
 	chat_repo = ChatRepository(lab_repo._session)
