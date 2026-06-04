@@ -1,10 +1,32 @@
+from __future__ import annotations
+
+import mimetypes
 from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from app.models.lab_result import OCRStatus
+
+
+def _infer_mime_type(payload: dict[str, Any]) -> str:
+	mime_type = payload.get("mime_type")
+	if isinstance(mime_type, str) and mime_type.strip():
+		return mime_type.strip()
+
+	legacy_mime_type = payload.get("file_type")
+	if isinstance(legacy_mime_type, str) and legacy_mime_type.strip():
+		return legacy_mime_type.strip()
+
+	for key in ("name", "url", "filename", "file_url"):
+		value = payload.get(key)
+		if isinstance(value, str):
+			guessed, _ = mimetypes.guess_type(value)
+			if guessed:
+				return guessed
+
+	return "application/octet-stream"
 
 
 class FileObject(BaseModel):
@@ -12,18 +34,29 @@ class FileObject(BaseModel):
 
 	name: str
 	url: str
+	mime_type: str
+
+	@model_validator(mode="before")
+	@classmethod
+	def normalize_legacy_payload(cls, value: Any) -> Any:
+		if not isinstance(value, dict):
+			return value
+
+		payload = dict(value)
+
+		if "name" not in payload and isinstance(payload.get("filename"), str):
+			payload["name"] = payload["filename"]
+
+		if "url" not in payload and isinstance(payload.get("file_url"), str):
+			payload["url"] = payload["file_url"]
+
+		payload["mime_type"] = _infer_mime_type(payload)
+		return payload
 
 
 class LabResultBase(BaseModel):
 	file: FileObject
 	ocr_status: OCRStatus
-
-	@field_validator("file", mode="before")
-	@classmethod
-	def parse_file(cls, v: Any) -> Any:
-		if isinstance(v, dict):
-			return FileObject(**v)
-		return v
 
 
 class LabResultCreate(LabResultBase):
@@ -42,13 +75,6 @@ class UploadRequest(BaseModel):
 
 	file: FileObject
 	guest_session_id: str | None = None
-
-	@field_validator("file", mode="before")
-	@classmethod
-	def parse_file(cls, v: Any) -> Any:
-		if isinstance(v, dict):
-			return FileObject(**v)
-		return v
 
 
 class LabResultUpdate(BaseModel):

@@ -64,7 +64,12 @@ async def test_create_lab_result_returns_201_and_dispatches_pipeline(client, aut
     body = response.json()
     assert body["status"] == "success"
 
-    lab_result_id = body["data"]["id"]
+    lab_result = body["data"]
+    lab_result_id = lab_result["id"]
+
+    assert lab_result["file"]["mime_type"] == "image/jpeg"
+    assert lab_result["file"]["name"] == "blood_panel.jpg"
+    assert lab_result["file"]["url"].startswith("http://")
 
     mock_task.delay.assert_called_once_with(lab_result_id)
 
@@ -90,6 +95,7 @@ async def test_lab_result_ocr_status_is_pending_immediately_after_upload(client,
 
     data = lab_resp.json()["data"]
     assert data["ocr_status"] == "pending"
+    assert data["file"]["mime_type"] == "image/jpeg"
     assert data["extracted_values"] is None
     assert data["ocr_completed_at"] is None
 
@@ -113,6 +119,7 @@ async def test_list_lab_results_for_case(client, auth_headers):
     items = response.json()["data"]
     assert len(items) == 1
     assert items[0]["ocr_status"] == "pending"
+    assert items[0]["file"]["mime_type"] == "image/jpeg"
 
 
 async def test_retrieve_single_lab_result_by_id(client, auth_headers):
@@ -135,7 +142,9 @@ async def test_retrieve_single_lab_result_by_id(client, auth_headers):
     )
 
     assert response.status_code == 200
-    assert response.json()["data"]["id"] == result_id
+    payload = response.json()["data"]
+    assert payload["id"] == result_id
+    assert payload["file"]["mime_type"] == "image/jpeg"
 
 
 async def test_interpretations_latest_is_404_before_pipeline_runs(client, auth_headers):
