@@ -198,10 +198,11 @@ async def verify_otp(
 ) -> SuccessResponse[TokenResponse]:
 	"""Verify the email-verification OTP sent after signup."""
 
+	settings = get_settings()
 	await enforce_action_rate_limit(
 		key=f"rl:verify-otp:{ip_hash}",
-		limit=5,
-		window_seconds=300,
+		limit=settings.OTP_FAILURE_RATE_LIMIT,
+		window_seconds=settings.OTP_FAILURE_RATE_WINDOW_SECONDS,
 		message="Too many OTP verification attempts. Try again later.",
 	)
 	try:
@@ -211,7 +212,7 @@ async def verify_otp(
 			email=payload.email,
 			code=payload.code,
 		)
-	except Exception:
+	except (ForbiddenError, UnauthorizedError):
 		await record_verify_otp_failure(ip_hash)
 		raise
 
@@ -345,13 +346,20 @@ async def password_reset(
 ) -> SuccessResponse:
 	"""Reset password using an OTP sent to the user's email."""
 
+	normalized_email = request.email.strip().lower()
 	await enforce_action_rate_limit(
-		key=f"rl:reset-password:{ip_hash}:{request.email}",
+		key=f"rl:reset-password:ip:{ip_hash}",
 		limit=5,
 		window_seconds=600,
 		message="Too many password reset attempts. Try again later.",
 	)
-	user = await user_repo.get_by_email(request.email.strip().lower())
+	await enforce_action_rate_limit(
+		key=f"rl:reset-password:email:{hash_opaque_token(normalized_email)}",
+		limit=5,
+		window_seconds=600,
+		message="Too many password reset attempts. Try again later.",
+	)
+	user = await user_repo.get_by_email(normalized_email)
 	if not user:
 		raise UnauthorizedError("Invalid or expired reset OTP")
 
