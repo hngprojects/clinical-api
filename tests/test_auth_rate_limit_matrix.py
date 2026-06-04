@@ -12,12 +12,21 @@ from app.services.auth.tokens import create_access_token
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
-FORGOT_PASSWORD_RATE_LIMIT = 3
-RESEND_OTP_RATE_LIMIT = 3
-VERIFY_OTP_RATE_LIMIT = 5
-RESET_PASSWORD_RATE_LIMIT = 5
-EMAIL_UPDATE_REQUEST_RATE_LIMIT = 3
-EMAIL_UPDATE_VERIFY_RATE_LIMIT = 5
+
+async def _assert_rate_limit_blocks_after_n_attempts(
+	client,
+	*,
+	url: str,
+	payload_factory,
+	count: int,
+	allowed_statuses: tuple[int, ...] = (200,),
+	headers: dict[str, str] | None = None,
+) -> None:
+	for attempt in range(count):
+		response = await client.post(url, json=payload_factory(attempt), headers=headers)
+		assert response.status_code in allowed_statuses, response.text
+	blocked = await client.post(url, json=payload_factory(count), headers=headers)
+	assert blocked.status_code == 429, blocked.text
 
 
 async def _create_user(*, email: str, password: str, verified: bool) -> User:
@@ -77,91 +86,69 @@ async def test_login_rate_limit_blocks_after_multiple_failures(client) -> None:
 
 
 async def test_forgot_password_rate_limit_blocks_after_multiple_requests(client) -> None:
-	statuses: list[int] = []
-	for _ in range(FORGOT_PASSWORD_RATE_LIMIT):
-		response = await client.post(
-			"/api/v1/auth/forgot-password",
-			json={"email": f"fp_{uuid.uuid4().hex[:8]}@clinsights.dev"},
-		)
-		statuses.append(response.status_code)
-		if response.status_code == 429:
-			break
-	blocked = await client.post(
-		"/api/v1/auth/forgot-password",
-		json={"email": f"fp_{uuid.uuid4().hex[:8]}@clinsights.dev"},
+	settings = get_settings()
+	await _assert_rate_limit_blocks_after_n_attempts(
+		client,
+		url="/api/v1/auth/forgot-password",
+		payload_factory=lambda attempt: {"email": f"fp_{attempt}_{uuid.uuid4().hex[:8]}@clinsights.dev"},
+		count=settings.FORGOT_PASSWORD_RATE_LIMIT,
+		allowed_statuses=(200,),
 	)
-	statuses.append(blocked.status_code)
-	assert statuses[-1] == 429
 
 
 async def test_resend_otp_rate_limit_blocks_after_multiple_requests(client) -> None:
+	settings = get_settings()
 	user = await _create_user(
 		email=f"resend_{uuid.uuid4().hex[:8]}@clinsights.dev",
 		password="Password123!",
 		verified=False,
 	)
 	try:
-		statuses: list[int] = []
-		for _ in range(RESEND_OTP_RATE_LIMIT):
-			response = await client.post("/api/v1/auth/resend-otp", json={"email": user.email})
-			statuses.append(response.status_code)
-			if response.status_code == 429:
-				break
-		blocked = await client.post("/api/v1/auth/resend-otp", json={"email": user.email})
-		statuses.append(blocked.status_code)
-		assert statuses[-1] == 429
+		await _assert_rate_limit_blocks_after_n_attempts(
+			client,
+			url="/api/v1/auth/resend-otp",
+			payload_factory=lambda attempt: {"email": user.email},
+			count=settings.RESEND_OTP_RATE_LIMIT,
+			allowed_statuses=(200,),
+		)
 	finally:
 		await _delete_user(user.id)
 
 
 async def test_verify_otp_rate_limit_blocks_after_multiple_failures(client) -> None:
+	settings = get_settings()
 	user = await _create_user(
 		email=f"verifyotp_{uuid.uuid4().hex[:8]}@clinsights.dev",
 		password="Password123!",
 		verified=False,
 	)
 	try:
-		statuses: list[int] = []
-		for _ in range(VERIFY_OTP_RATE_LIMIT):
-			response = await client.post(
-				"/api/v1/auth/verify-otp",
-				json={"email": user.email, "code": "000000", "device_id": "rl-matrix"},
-			)
-			statuses.append(response.status_code)
-			if response.status_code == 429:
-				break
-		blocked = await client.post(
-			"/api/v1/auth/verify-otp",
-			json={"email": user.email, "code": "000000", "device_id": "rl-matrix"},
+		await _assert_rate_limit_blocks_after_n_attempts(
+			client,
+			url="/api/v1/auth/verify-otp",
+			payload_factory=lambda attempt: {"email": user.email, "code": "000000", "device_id": "rl-matrix"},
+			count=settings.OTP_FAILURE_RATE_LIMIT,
+			allowed_statuses=(401,),
 		)
-		statuses.append(blocked.status_code)
-		assert statuses[-1] == 429
 	finally:
 		await _delete_user(user.id)
 
 
 async def test_reset_password_rate_limit_blocks_after_multiple_failures(client) -> None:
+	settings = get_settings()
 	user = await _create_user(
 		email=f"resetrl_{uuid.uuid4().hex[:8]}@clinsights.dev",
 		password="Password123!",
 		verified=True,
 	)
 	try:
-		statuses: list[int] = []
-		for _ in range(RESET_PASSWORD_RATE_LIMIT):
-			response = await client.post(
-				"/api/v1/auth/reset-password",
-				json={"email": user.email, "token": "111111", "new_password": "StrongPass123!"},
-			)
-			statuses.append(response.status_code)
-			if response.status_code == 429:
-				break
-		blocked = await client.post(
-			"/api/v1/auth/reset-password",
-			json={"email": user.email, "token": "111111", "new_password": "StrongPass123!"},
+		await _assert_rate_limit_blocks_after_n_attempts(
+			client,
+			url="/api/v1/auth/reset-password",
+			payload_factory=lambda attempt: {"email": user.email, "token": "111111", "new_password": "StrongPass123!"},
+			count=settings.RESET_PASSWORD_RATE_LIMIT,
+			allowed_statuses=(401,),
 		)
-		statuses.append(blocked.status_code)
-		assert statuses[-1] == 429
 	finally:
 		await _delete_user(user.id)
 
@@ -183,6 +170,7 @@ async def test_reset_password_rejects_weak_new_password(client) -> None:
 
 
 async def test_email_update_rate_limit_blocks_after_multiple_requests(client) -> None:
+	settings = get_settings()
 	user = await _create_user(
 		email=f"emailupdate_{uuid.uuid4().hex[:8]}@clinsights.dev",
 		password="Password123!",
@@ -190,28 +178,20 @@ async def test_email_update_rate_limit_blocks_after_multiple_requests(client) ->
 	)
 	try:
 		headers = _auth_headers(user.id)
-		statuses: list[int] = []
-		for _ in range(EMAIL_UPDATE_REQUEST_RATE_LIMIT):
-			response = await client.post(
-				"/api/v1/users/me/email",
-				json={"email": f"new_{uuid.uuid4().hex[:8]}@clinsights.dev", "password": "Password123!"},
-				headers=headers,
-			)
-			statuses.append(response.status_code)
-			if response.status_code == 429:
-				break
-		blocked = await client.post(
-			"/api/v1/users/me/email",
-			json={"email": f"new_{uuid.uuid4().hex[:8]}@clinsights.dev", "password": "Password123!"},
+		await _assert_rate_limit_blocks_after_n_attempts(
+			client,
+			url="/api/v1/users/me/email",
 			headers=headers,
+			payload_factory=lambda attempt: {"email": f"new_{attempt}_{uuid.uuid4().hex[:8]}@clinsights.dev", "password": "Password123!"},
+			count=settings.EMAIL_UPDATE_REQUEST_RATE_LIMIT,
+			allowed_statuses=(200,),
 		)
-		statuses.append(blocked.status_code)
-		assert statuses[-1] == 429
 	finally:
 		await _delete_user(user.id)
 
 
 async def test_verify_email_update_rate_limit_blocks_after_multiple_failures(client) -> None:
+	settings = get_settings()
 	user = await _create_user(
 		email=f"verifyemail_{uuid.uuid4().hex[:8]}@clinsights.dev",
 		password="Password123!",
@@ -225,23 +205,13 @@ async def test_verify_email_update_rate_limit_blocks_after_multiple_failures(cli
 			headers=headers,
 		)
 		assert start.status_code == 200
-
-		statuses: list[int] = []
-		for _ in range(EMAIL_UPDATE_VERIFY_RATE_LIMIT):
-			response = await client.post(
-				"/api/v1/users/me/email/verify",
-				json={"token": "000000"},
-				headers=headers,
-			)
-			statuses.append(response.status_code)
-			if response.status_code == 429:
-				break
-		blocked = await client.post(
-			"/api/v1/users/me/email/verify",
-			json={"token": "000000"},
+		await _assert_rate_limit_blocks_after_n_attempts(
+			client,
+			url="/api/v1/users/me/email/verify",
 			headers=headers,
+			payload_factory=lambda attempt: {"token": "000000"},
+			count=settings.EMAIL_UPDATE_VERIFY_RATE_LIMIT,
+			allowed_statuses=(400,),
 		)
-		statuses.append(blocked.status_code)
-		assert statuses[-1] == 429
 	finally:
 		await _delete_user(user.id)

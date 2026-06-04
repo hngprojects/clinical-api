@@ -1,3 +1,4 @@
+import hashlib
 import logging
 from datetime import datetime, timezone
 from typing import Annotated
@@ -263,11 +264,12 @@ async def resend(
 	ip_hash: ClientIpHash,
 ) -> SuccessResponse[OtpDispatchResponse]:
 	"""Re-send the email-verification OTP."""
+	settings = get_settings()
 
 	await enforce_action_rate_limit(
 		key=f"rl:resend-otp:{ip_hash}",
-		limit=3,
-		window_seconds=300,
+		limit=settings.RESEND_OTP_RATE_LIMIT,
+		window_seconds=settings.RESEND_OTP_RATE_WINDOW_SECONDS,
 		message="Too many OTP resend requests. Try again later.",
 	)
 
@@ -324,11 +326,12 @@ async def forgot_password(
 	Always returns 200 regardless of whether the email is registered to prevent
 	user-enumeration attacks.
 	"""
+	settings = get_settings()
 
 	await enforce_action_rate_limit(
 		key=f"rl:forgot-password:{ip_hash}",
-		limit=3,
-		window_seconds=600,
+		limit=settings.FORGOT_PASSWORD_RATE_LIMIT,
+		window_seconds=settings.FORGOT_PASSWORD_RATE_WINDOW_SECONDS,
 		message="Too many password reset requests. Try again later.",
 	)
 
