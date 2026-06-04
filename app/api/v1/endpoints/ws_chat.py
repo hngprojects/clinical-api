@@ -33,6 +33,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.db.session import AsyncSessionLocal
 from app.repositories.ai_interpretation import AIInterpretationRepository
 from app.repositories.chat import ChatRepository
+from app.repositories.guest_session import GuestSessionRepository
 from app.repositories.lab_result import LabResultRepository
 from app.repositories.medical_case import MedicalCaseRepository
 from app.repositories.token_blocklist import TokenBlocklistRepository
@@ -104,18 +105,37 @@ async def _authenticate(token: str, session) -> UUID | None:
 	return user_id
 
 
+async def _authenticate_guest(guest_session_id: UUID, session) -> UUID | None:
+	"""Validate a guest session and return its ID if active, else None."""
+	from datetime import datetime, timezone
+
+	guest = await GuestSessionRepository(session).get_by_id(guest_session_id)
+	if guest is None:
+		logger.warning("[ws_chat] guest session not found id=%s", guest_session_id)
+		return None
+	now = datetime.now(timezone.utc)
+	if guest.revoked or guest.migrated_user_id is not None or guest.expires_at < now:
+		logger.warning("[ws_chat] guest session invalid/expired id=%s", guest_session_id)
+		return None
+	return guest.id
+
+
 # ── Per-message processor
 
 
 async def _process_message(
 	text: str,
 	case_id: UUID,
-	user_id: UUID,
+	user_id: UUID | None,
+	connection_key: UUID,
 	websocket: WebSocket,
 	registry: ConnectionRegistry,
 ) -> None:
+	"""Handle one user message end-to-end.
+
+	user_id is None for guest connections; connection_key is always set
+	(it equals user_id for authenticated users, guest_session_id for guests).
 	"""
-	Handle one user message end-to-end"""
 	async with AsyncSessionLocal() as session:
 		chat_repo = ChatRepository(session)
 		interp_repo = AIInterpretationRepository(session)
@@ -156,8 +176,8 @@ async def _process_message(
 		if full_response:
 			ai_msg = await save_ai_message(chat_repo, case_id, full_response)
 			logger.info("[ws_chat] AI message saved id=%s case=%s", ai_msg.id, case_id)
-			# Broadcast done to ALL user connections (multi-device)
-			await registry.broadcast(user_id, make_done(str(ai_msg.id)))
+			# Broadcast done to all connections sharing the same key (multi-device for users)
+			await registry.broadcast(connection_key, make_done(str(ai_msg.id)))
 		else:
 			try:
 				await websocket.send_json(make_error("AI_ERROR", "No response received from AI provider."))
@@ -169,15 +189,13 @@ async def _process_message(
 async def _consume_queue(
 	queue: asyncio.Queue[str | None],
 	case_id: UUID,
-	user_id: UUID,
+	user_id: UUID | None,
+	connection_key: UUID,
 	websocket: WebSocket,
 	registry: ConnectionRegistry,
 ) -> None:
-	"""
-	Drain the message queue strictly in order, one at a time.
+	"""Drain the message queue strictly in order, one at a time.
 	Exits when it receives None (the shutdown sentinel).
-	This guarantees messages are always processed sequentially —
-	the next message only starts after the AI finishes the current one.
 	"""
 	while True:
 		text = await queue.get()
@@ -187,7 +205,7 @@ async def _consume_queue(
 			break
 
 		try:
-			await _process_message(text, case_id, user_id, websocket, registry)
+			await _process_message(text, case_id, user_id, connection_key, websocket, registry)
 		except Exception:
 			logger.exception("[ws_chat] unhandled error in consumer case=%s", case_id)
 			try:
@@ -227,28 +245,48 @@ async def websocket_chat(websocket: WebSocket) -> None:
 		return
 
 	# ── 3. Authenticate and check case ownership
+	user_id: UUID | None = None
+	connection_key: UUID
+
 	async with AsyncSessionLocal() as session:
-		user_id = await _authenticate(init.token, session)
-		if user_id is None:
-			await websocket.send_json(make_error("UNAUTHORIZED", "Invalid or expired token."))
-			await websocket.close(code=4001)
-			return
+		if init.token is not None:
+			user_id = await _authenticate(init.token, session)
+			if user_id is None:
+				await websocket.send_json(make_error("UNAUTHORIZED", "Invalid or expired token."))
+				await websocket.close(code=4001)
+				return
+			connection_key = user_id
+		else:
+			# guest_session_id is guaranteed non-None by InitMessage validator
+			guest_id = await _authenticate_guest(init.guest_session_id, session)  # type: ignore[arg-type]
+			if guest_id is None:
+				await websocket.send_json(make_error("UNAUTHORIZED", "Invalid or expired guest session."))
+				await websocket.close(code=4001)
+				return
+			connection_key = guest_id
 
 		case = await MedicalCaseRepository(session).get_by_id(init.case_id)
 		if case is None:
 			await websocket.send_json(make_error("NOT_FOUND", "Medical case not found."))
 			await websocket.close(code=4004)
 			return
-		if case.user_id != user_id:
-			await websocket.send_json(make_error("FORBIDDEN", "You do not have access to this case."))
-			await websocket.close(code=4003)
-			return
+
+		if user_id is not None:
+			if case.user_id != user_id:
+				await websocket.send_json(make_error("FORBIDDEN", "You do not have access to this case."))
+				await websocket.close(code=4003)
+				return
+		else:
+			if case.guest_session_id != connection_key:
+				await websocket.send_json(make_error("FORBIDDEN", "You do not have access to this case."))
+				await websocket.close(code=4003)
+				return
 
 	case_id: UUID = init.case_id
 
 	# ── 4. Register connection
-	registry.connect(user_id, websocket)
-	logger.info("[ws_chat] registered user=%s case=%s", user_id, case_id)
+	registry.connect(connection_key, websocket)
+	logger.info("[ws_chat] registered connection_key=%s case=%s", connection_key, case_id)
 
 	# ── 5. Send history
 	async with AsyncSessionLocal() as session:
@@ -258,7 +296,7 @@ async def websocket_chat(websocket: WebSocket) -> None:
 
 	# ── 6. Start queue consumer
 	queue: asyncio.Queue[str | None] = asyncio.Queue()
-	consumer = asyncio.create_task(_consume_queue(queue, case_id, user_id, websocket, registry))
+	consumer = asyncio.create_task(_consume_queue(queue, case_id, user_id, connection_key, websocket, registry))
 
 	# ── 7. Receive loop
 	try:
@@ -316,5 +354,5 @@ async def websocket_chat(websocket: WebSocket) -> None:
 			except (asyncio.CancelledError, Exception):
 				pass  # task is done, swallow cancellation
 
-		registry.disconnect(user_id, websocket)
-		logger.info("[ws_chat] cleaned up user=%s case=%s", user_id, case_id)
+		registry.disconnect(connection_key, websocket)
+		logger.info("[ws_chat] cleaned up connection_key=%s case=%s", connection_key, case_id)

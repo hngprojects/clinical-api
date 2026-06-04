@@ -45,7 +45,11 @@ async def _seed_case_minimal(user: User, *, with_interp: bool, with_chat: bool) 
 			LabResult(
 				id=lab_id,
 				medical_case_id=case_id,
-				file={"name": "panel.jpg", "url": "https://example.com/panel.jpg"},
+				file={
+					"name": "panel.jpg",
+					"url": "https://example.com/panel.jpg",
+					"mime_type": "image/jpeg",
+				},
 				ocr_status=OCRStatus.COMPLETE,
 				extracted_values=EXTRACTED,
 				created_at=now,
@@ -90,6 +94,7 @@ async def test_full_case_returns_nested_payload(client, test_user, auth_headers)
 	assert data["case"]["id"] == str(case_id)
 	assert len(data["lab_results"]) == 1
 	assert data["lab_results"][0]["ocr_status"] == "complete"
+	assert data["lab_results"][0]["file"]["mime_type"] == "image/jpeg"
 	assert data["interpretation"] is not None
 	assert data["interpretation"]["summary"] == "Low haemoglobin."
 	assert len(data["chats"]) == 1
@@ -156,7 +161,11 @@ async def test_full_case_guest_session_allowed(client):
 			LabResult(
 				id=lab_id,
 				medical_case_id=case_id,
-				file={"name": "g.jpg", "url": "https://example.com/g.jpg"},
+				file={
+					"name": "g.jpg",
+					"url": "https://example.com/g.jpg",
+					"mime_type": "image/jpeg",
+				},
 				ocr_status=OCRStatus.PENDING,
 				created_at=now,
 			)
@@ -199,7 +208,11 @@ async def test_full_case_chats_are_chronological(client, test_user, auth_headers
 			LabResult(
 				id=lab_id,
 				medical_case_id=case_id,
-				file={"name": "p.jpg", "url": "https://example.com/p.jpg"},
+				file={
+					"name": "p.jpg",
+					"url": "https://example.com/p.jpg",
+					"mime_type": "image/jpeg",
+				},
 				ocr_status=OCRStatus.COMPLETE,
 				extracted_values=EXTRACTED,
 				created_at=now,

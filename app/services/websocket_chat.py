@@ -9,6 +9,7 @@ from app.models.chat import Chat, SenderType
 from app.repositories.ai_interpretation import AIInterpretationRepository
 from app.repositories.chat import ChatRepository
 from app.repositories.lab_result import LabResultRepository
+from app.schemas.lab_result import FileObject
 from app.services import llm
 
 logger = logging.getLogger(__name__)
@@ -30,12 +31,15 @@ def chat_to_wire(msg: Chat) -> dict:
 	"""Convert a Chat ORM object into a plain dict safe to send over WebSocket.
 	We read msg.content["text"] because Chat.content is a JSONB column stored
 	as {"text": "the actual message"} — not a plain string."""
-	return {
+	payload = {
 		"id": str(msg.id),
 		"sender_type": msg.sender_type.value,
-		"content": msg.content.get("text", ""),
+		"content": msg.content.get("text", "") if isinstance(msg.content, dict) else "",
 		"sent_at": msg.sent_at.isoformat(),
 	}
+	if msg.file is not None:
+		payload["file"] = msg.file
+	return payload
 
 
 # ── System prompt
@@ -182,7 +186,7 @@ def trim_history(
 async def save_user_message(
 	chat_repo: ChatRepository,
 	case_id: uuid.UUID,
-	user_id: uuid.UUID,
+	user_id: uuid.UUID | None,
 	text: str,
 ) -> Chat:
 	"""
@@ -223,6 +227,56 @@ async def save_ai_message(
 	await chat_repo.commit()
 	await chat_repo.refresh(msg)
 	logger.debug("[chat] saved AI message id=%s case=%s", msg.id, case_id)
+	return msg
+
+
+async def save_file_message(
+	chat_repo: ChatRepository,
+	case_id: uuid.UUID,
+	file: dict,
+	*,
+	lab_result_id: uuid.UUID | None = None,
+	do_commit: bool = True,
+) -> Chat:
+	"""Persist an uploaded file as a file-card chat message.
+
+	Validates file via FileObject, deduplicates by lab_result_id,
+	and optionally defers commit so caller can use a single transaction.
+	"""
+	from sqlalchemy import select
+
+	# Validate file metadata before storing
+	validated = FileObject(**file).model_dump()
+
+	# Dedup: skip if a file message for this lab_result already exists
+	if lab_result_id is not None:
+		existing = await chat_repo._session.execute(select(Chat).where(Chat.lab_result_id == lab_result_id))
+		existing_msg = existing.scalar_one_or_none()
+		if existing_msg is not None:
+			logger.debug(
+				"[chat] file message already exists for lab_result_id=%s — skipping",
+				lab_result_id,
+			)
+			return existing_msg
+
+	msg = Chat(
+		user_id=None,
+		medical_case_id=case_id,
+		sender_type=SenderType.FILE,
+		content={"text": ""},
+		file=validated,
+		lab_result_id=lab_result_id,
+	)
+	chat_repo.add(msg)
+	if do_commit:
+		await chat_repo.commit()
+		await chat_repo.refresh(msg)
+		logger.debug(
+			"[chat] saved file message id=%s case=%s filename=%s",
+			msg.id,
+			case_id,
+			validated.get("name", ""),
+		)
 	return msg
 
 

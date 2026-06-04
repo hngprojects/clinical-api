@@ -68,9 +68,17 @@ def test_oauth_state_only_keeps_allowed_return_url(monkeypatch: pytest.MonkeyPat
 
 
 def test_build_redirect_url_merges_existing_query_params() -> None:
-	redirect_url = build_redirect_url("clinsight://auth/google?existing=1", "token-123")
+	redirect_url = build_redirect_url(
+		"clinsight://auth/google?existing=1",
+		"token-123",
+		refresh_token="refresh-456",
+	)
 	parsed = urlparse(redirect_url)
 	assert parsed.scheme == "clinsight"
 	assert parsed.netloc == "auth"
 	assert parsed.path == "/google"
-	assert parse_qs(parsed.query) == {"existing": ["1"], "access_token": ["token-123"]}
+	assert parse_qs(parsed.query) == {
+		"existing": ["1"],
+		"access_token": ["token-123"],
+		"refresh_token": ["refresh-456"],
+	}

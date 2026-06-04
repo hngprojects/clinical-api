@@ -17,6 +17,7 @@ from app.api.deps import (
 	GuestSessionId,
 	MedicalCaseRepo,
 	OtpRepo,
+	PasswordResetRepo,
 	TokenBlocklistRepo,
 	UserRepo,
 	bearer_scheme,
@@ -32,33 +33,40 @@ from app.core.rate_limit import (
 	record_verify_otp_failure,
 )
 from app.core.responses import SuccessResponse
-from app.core.security import hash_opaque_token, hash_password
+from app.core.security import hash_opaque_token
 from app.models.otp import OtpPurpose
 from app.schemas.auth import (
 	AuthSessionResponse,
 	ForgotPasswordRequest,
 	LoginRequest,
 	OtpDispatchResponse,
+	RefreshRequest,
 	ResendOtpRequest,
 	ResetPasswordRequest,
+	ResetTokenResponse,
 	SignupRequest,
 	TokenResponse,
 	VerifyOtpRequest,
+	VerifyResetOtpRequest,
 )
 from app.schemas.user import UserResponse
 from app.services.auth import (
 	authenticate_credentials,
 	authenticate_otp,
 	create_otp_for_user,
+	create_password_reset,
 	decode_access_token,
 	decode_refresh_token,
 	otp_ttl_seconds,
 	resend_otp,
+	reset_password,
 	revoke_refresh_token,
 	signup_user,
 	verify_otp_for_user,
 )
 from app.services.auth.blocklist import is_token_revoked, revoke_token
+from app.services.auth.otp import OtpVerificationError
+from app.services.auth_sessions import AuthSessionIssue
 from app.services.guest import migrate_guest_session_to_user
 from app.services.oauth import (
 	exchange_google_code,
@@ -89,6 +97,16 @@ def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
 		secure=settings.COOKIE_SECURE,
 		samesite=settings.COOKIE_SAMESITE,
 		max_age=settings.JWT_REFRESH_TOKEN_EXPIRES_MINUTES * 60,
+	)
+
+
+def _token_response(issue: AuthSessionIssue, *, user: UserResponse | None = None) -> TokenResponse:
+	return TokenResponse(
+		access_token=issue.access_token,
+		refresh_token=issue.refresh_token,
+		token_type="bearer",
+		expires_in=issue.expires_in,
+		user=user,
 	)
 
 
@@ -170,12 +188,7 @@ async def login(
 	_set_refresh_cookie(response, issue.refresh_token)
 	return SuccessResponse(
 		message="Logged in successfully.",
-		data=TokenResponse(
-			access_token=issue.access_token,
-			token_type="bearer",
-			expires_in=issue.expires_in,
-			user=UserResponse.model_validate(user),
-		),
+		data=_token_response(issue, user=UserResponse.model_validate(user)),
 	)
 
 
@@ -234,12 +247,7 @@ async def verify_otp(
 	_set_refresh_cookie(response, issue.refresh_token)
 	return SuccessResponse(
 		message="Email verified. Welcome!",
-		data=TokenResponse(
-			access_token=issue.access_token,
-			token_type="bearer",
-			expires_in=issue.expires_in,
-			user=UserResponse.model_validate(user),
-		),
+		data=_token_response(issue, user=UserResponse.model_validate(user)),
 	)
 
 
@@ -304,7 +312,8 @@ async def me(current_user: CurrentUser) -> SuccessResponse[UserResponse]:
 # Password reset
 @router.post("/forgot-password", response_model=SuccessResponse)
 async def forgot_password(
-	request: ForgotPasswordRequest,
+	payload: ForgotPasswordRequest,
+	http_request: Request,
 	user_repo: UserRepo,
 	otp_repo: OtpRepo,
 	session: DBSession,
@@ -323,7 +332,7 @@ async def forgot_password(
 		message="Too many password reset requests. Try again later.",
 	)
 
-	user = await user_repo.get_by_email(request.email.strip().lower())
+	user = await user_repo.get_by_email(payload.email.strip().lower())
 	if user:
 		_, code = await create_otp_for_user(otp_repo, user_id=user.id, purpose=OtpPurpose.RESET_PASSWORD)
 		await session.commit()
@@ -334,6 +343,34 @@ async def forgot_password(
 	return SuccessResponse(message="If this email is registered, you'll receive a reset code shortly.")
 
 
+@router.post("/verify-reset-otp", response_model=SuccessResponse[ResetTokenResponse])
+async def verify_reset_otp(
+	request: VerifyResetOtpRequest,
+	user_repo: UserRepo,
+	otp_repo: OtpRepo,
+	reset_repo: PasswordResetRepo,
+	session: DBSession,
+) -> SuccessResponse[ResetTokenResponse]:
+	"""Verify a password-reset OTP and issue an opaque reset token for final password change."""
+	user = await user_repo.get_by_email(request.email.strip().lower())
+	if not user:
+		raise UnauthorizedError("Invalid or expired reset OTP")
+
+	try:
+		await verify_otp_for_user(otp_repo, user_id=user.id, purpose=OtpPurpose.RESET_PASSWORD, code=request.code)
+	except OtpVerificationError:
+		await session.commit()
+		raise UnauthorizedError("Invalid or expired reset OTP")
+
+	settings = get_settings()
+	raw = await create_password_reset(reset_repo, user, expires_minutes=settings.PASSWORD_RESET_TOKEN_EXPIRES_MINUTES)
+	await session.commit()
+	return SuccessResponse(
+		message="Reset token issued.",
+		data=ResetTokenResponse(reset_token=raw, expires_in_seconds=settings.PASSWORD_RESET_TOKEN_EXPIRES_MINUTES * 60),
+	)
+
+
 @router.post(
 	"/reset-password",
 	response_model=SuccessResponse,
@@ -341,36 +378,23 @@ async def forgot_password(
 async def password_reset(
 	request: ResetPasswordRequest,
 	user_repo: UserRepo,
-	otp_repo: OtpRepo,
+	reset_repo: PasswordResetRepo,
+	session: DBSession,
 	ip_hash: ClientIpHash,
 ) -> SuccessResponse:
-	"""Reset password using an OTP sent to the user's email."""
-
-	normalized_email = request.email.strip().lower()
+	"""Reset password using an opaque reset token previously issued after OTP verification."""
 	await enforce_action_rate_limit(
 		key=f"rl:reset-password:ip:{ip_hash}",
 		limit=5,
 		window_seconds=600,
 		message="Too many password reset attempts. Try again later.",
 	)
-	await enforce_action_rate_limit(
-		key=f"rl:reset-password:email:{hash_opaque_token(normalized_email)}",
-		limit=5,
-		window_seconds=600,
-		message="Too many password reset attempts. Try again later.",
-	)
-	user = await user_repo.get_by_email(normalized_email)
-	if not user:
-		raise UnauthorizedError("Invalid or expired reset OTP")
-
 	try:
-		await verify_otp_for_user(otp_repo, user_id=user.id, purpose=OtpPurpose.RESET_PASSWORD, code=request.token)
-	except Exception:
-		await user_repo.commit()
-		raise UnauthorizedError("Invalid or expired reset OTP")
+		await reset_password(reset_repo, user_repo, raw_token=request.token, new_password=request.new_password)
+	except UnauthorizedError:
+		raise UnauthorizedError("Invalid or expired reset token")
 
-	user.password_hash = hash_password(request.new_password)
-	await user_repo.commit()
+	await session.commit()
 	return SuccessResponse(message="Password reset successfully.")
 
 
@@ -492,7 +516,11 @@ async def google_callback(
 
 	settings = get_settings()
 	base_redirect = oauth_ctx.return_url if oauth_ctx and oauth_ctx.return_url else settings.FRONTEND_AUTH_CALLBACK_URL
-	redirect_url = build_redirect_url(base_redirect, app_access_token)
+	redirect_url = build_redirect_url(
+		base_redirect,
+		app_access_token,
+		refresh_token=issue.refresh_token,
+	)
 	return RedirectResponse(url=redirect_url)
 
 
@@ -502,17 +530,20 @@ async def refresh(
 	auth_manager: AuthSessionManagerDep,
 	blocklist_repo: TokenBlocklistRepo,
 	response: Response,
-	refresh_token: Annotated[str | None, Cookie()] = None,
+	payload: RefreshRequest | None = None,
+	refresh_token_cookie: Annotated[str | None, Cookie(alias="refresh_token")] = None,
 ) -> SuccessResponse[TokenResponse]:
 	"""Refresh the access and refresh tokens.
 
-	Validates the inbound refresh token against auth_sessions, blocklists the
-	old refresh JWT, then rotates to a new access/refresh pair on the same device.
+	Accepts the refresh token from the HttpOnly cookie (web) or request body
+	(mobile). Validates against auth_sessions, blocklists the old refresh JWT,
+	then rotates to a new access/refresh pair on the same device.
 	"""
+	refresh_token = refresh_token_cookie or (payload.refresh_token if payload else None)
 	if not refresh_token:
-		raise UnauthorizedError("Refresh token cookie is required")
-	payload = decode_refresh_token(refresh_token)
-	refresh_token_jti: str = payload["jti"]
+		raise UnauthorizedError("Refresh token is required")
+	payload_decoded = decode_refresh_token(refresh_token)
+	refresh_token_jti: str = payload_decoded["jti"]
 	if await is_token_revoked(blocklist_repo, refresh_token_jti):
 		raise UnauthorizedError("Refresh token has been revoked")
 	await revoke_refresh_token(refresh_token, blocklist_repo)
@@ -521,11 +552,7 @@ async def refresh(
 	_set_refresh_cookie(response, issue.refresh_token)
 	return SuccessResponse(
 		message="Tokens refreshed",
-		data=TokenResponse(
-			access_token=issue.access_token,
-			token_type="bearer",
-			expires_in=issue.expires_in,
-		),
+		data=_token_response(issue),
 	)
 
 

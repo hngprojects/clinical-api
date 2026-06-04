@@ -83,14 +83,21 @@ class ResendOtpRequest(BaseModel):
 
 
 class TokenResponse(BaseModel):
-	"""Returned after a successful login or OTP verification."""
+	"""Returned after login, OTP verification, or token refresh."""
 
 	access_token: str
+	refresh_token: str
 	token_type: str = "bearer"
 	expires_in: int
 	user: UserResponse | None = None
 
 	model_config = ConfigDict(from_attributes=True)
+
+
+class RefreshRequest(BaseModel):
+	"""Optional body for token refresh (mobile clients without cookies)."""
+
+	refresh_token: str | None = Field(default=None, min_length=1)
 
 
 class TokenData(BaseModel):
@@ -115,8 +122,19 @@ class ForgotPasswordRequest(BaseModel):
 	email: EmailStr
 
 
-class ResetPasswordRequest(BaseModel):
+class VerifyResetOtpRequest(BaseModel):
+	model_config = ConfigDict(str_strip_whitespace=True)
+
 	email: EmailStr
+	code: str = Field(min_length=4, max_length=12)
+
+
+class ResetTokenResponse(BaseModel):
+	reset_token: str
+	expires_in_seconds: int
+
+
+class ResetPasswordRequest(BaseModel):
 	token: str = Field(min_length=6, max_length=512)
 	new_password: str = Field(min_length=8, max_length=72)
 

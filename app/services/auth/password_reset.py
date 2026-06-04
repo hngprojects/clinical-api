@@ -16,11 +16,12 @@ from app.repositories.user import UserRepository
 async def create_password_reset(
 	reset_repo: PasswordResetRepository,
 	user: User,
+	expires_minutes: int = 60,
 ) -> str:
 	"""Create a password-reset token for a user. Returns the raw (unhashed) token."""
 	await reset_repo.delete_all_for_user(user.id)
 	raw = new_opaque_token()
-	expires = datetime.now(timezone.utc) + timedelta(minutes=60)
+	expires = datetime.now(timezone.utc) + timedelta(minutes=expires_minutes)
 	password_reset_token = PasswordResetToken(
 		user_id=user.id,
 		token_hash=hash_opaque_token(raw),
