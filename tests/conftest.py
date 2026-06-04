@@ -84,6 +84,7 @@ def mock_redis_rate_limit(monkeypatch: pytest.MonkeyPatch) -> None:
 
 	monkeypatch.setattr("app.core.rate_limit.get_redis", _get_redis)
 	monkeypatch.setattr("app.core.redis_client.get_redis", _get_redis)
+	monkeypatch.setattr("app.core.guest_upload_lock.get_redis", _get_redis)
 
 
 @pytest.fixture(scope="session", autouse=True)
