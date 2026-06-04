@@ -20,7 +20,7 @@ STORAGE_MOCK = "app.services.storage.upload_medical_file"
 _FAKE_FILE = ("panel.jpg", b"fake-image-bytes", "image/jpeg")
 _FAKE_METADATA = {
 	"filename": "panel.jpg",
-	"file_type": "image/jpeg",
+	"mime_type": "image/jpeg",
 	"file_size": 16,
 	"file_url": "http://testserver/media/fake-uuid.jpg",
 }

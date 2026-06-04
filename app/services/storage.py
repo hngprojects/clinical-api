@@ -35,7 +35,7 @@ async def upload_medical_file(
 
 	return {
 		"filename": filename,
-		"file_type": content_type or "application/octet-stream",
+		"mime_type": content_type or "application/octet-stream",
 		"file_size": len(data),
 		"file_url": file_url,
 	}
