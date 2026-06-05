@@ -50,9 +50,6 @@ async def upload_lab_result(
 	await case_repo.commit()
 	await case_repo.refresh(case)
 
-	if user is None and manager is not None and guest_session_uuid is not None:
-		await manager.increment_upload(guest_session_uuid)
-
 	# Attach the lab result
 	file_data = payload.file.model_dump()
 	lab_result = LabResult(
