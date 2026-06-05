@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, File, Query, Request, UploadFile, status
+from fastapi import APIRouter, File, Form, Query, Request, UploadFile, status
 
 from app.api.deps import (
 	CurrentUser,
@@ -109,8 +109,13 @@ async def create(
 	lab_repo: LabResultRepo,
 	case_repo: MedicalCaseRepo,
 	file: UploadFile = File(...),
+	note: str | None = Form(None),
 ) -> SuccessResponse[LabResultResponse]:
-	"""Upload a new lab result file to a medical case."""
+	"""Upload a new lab result file to a medical case.
+
+	An optional `note` form field can accompany the file — it is saved as a
+	patient chat message so the AI has context about what the user wants to know.
+	"""
 	await get_case(case_repo, case_id, user=current_user)
 
 	valid_media_types = {
@@ -129,6 +134,8 @@ async def create(
 	if len(file_contents) > 10 * 1024 * 1024:
 		raise BadRequestError("File size must be 10MB or smaller.")
 
+	note_text = note.strip() if note and note.strip() else None
+
 	public_url_base = str(request.base_url).rstrip("/")
 	result = await add_file_to_case(
 		lab_repo,
@@ -138,6 +145,8 @@ async def create(
 		file.filename,
 		file.content_type or "application/octet-stream",
 		public_url_base,
+		user_id=current_user.id,
+		note=note_text,
 	)
 	return SuccessResponse(
 		message="Lab result created.",
