@@ -20,13 +20,14 @@ GUEST_HEADER = "X-Guest-Session-Id"
 _FAKE_FILE = ("panel.jpg", b"fake-image-bytes", "image/jpeg")
 _FAKE_METADATA = {
 	"filename": "panel.jpg",
-	"file_type": "image/jpeg",
+	"mime_type": "image/jpeg",
 	"file_size": 16,
 	"file_url": "http://testserver/media/fake-uuid.jpg",
 }
 
 
-async def test_second_guest_upload_returns_403(client: AsyncClient) -> None:
+async def test_second_guest_upload_while_processing_returns_409(client: AsyncClient) -> None:
+	"""While the first upload is in-flight (lock held), a second upload is rejected."""
 	guest = await create_guest_session()
 
 	with (
@@ -46,5 +47,4 @@ async def test_second_guest_upload_returns_403(client: AsyncClient) -> None:
 			headers={GUEST_HEADER: guest.guest_session_id},
 		)
 
-	assert second.status_code == 403
-	assert "upload" in second.json()["message"].lower()
+	assert second.status_code == 409

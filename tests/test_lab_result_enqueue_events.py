@@ -15,10 +15,18 @@ pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
 def _make_repo() -> MagicMock:
-	repo = MagicMock()
+	repo = MagicMock(spec=[])
 	repo.add = MagicMock()
 	repo.commit = AsyncMock()
 	repo.refresh = AsyncMock()
+	repo._session = AsyncMock()
+	repo._session.commit = AsyncMock()
+	# Mock the dedup query: execute(...).scalar_one_or_none() → None
+	mock_execute = AsyncMock()
+	mock_result = MagicMock()
+	mock_result.scalar_one_or_none = MagicMock(return_value=None)
+	mock_execute.return_value = mock_result
+	repo._session.execute = mock_execute
 	return repo
 
 
@@ -70,7 +78,7 @@ async def test_handle_file_upload_emits_queued_event_for_authenticated_user() ->
 	publish_frontend = AsyncMock()
 	file_metadata = {
 		"filename": "panel.jpg",
-		"file_type": "image/jpeg",
+		"mime_type": "image/jpeg",
 		"file_size": 16,
 		"file_url": "https://storage.example.com/panel.jpg",
 	}
@@ -138,7 +146,7 @@ async def test_guest_upload_does_not_emit_queued_event() -> None:
 	publish_frontend = AsyncMock()
 	file_metadata = {
 		"filename": "panel.jpg",
-		"file_type": "image/jpeg",
+		"mime_type": "image/jpeg",
 		"file_size": 16,
 		"file_url": "https://storage.example.com/panel.jpg",
 	}

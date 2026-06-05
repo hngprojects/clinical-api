@@ -4,6 +4,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict
 
 from app.models.chat import SenderType
+from app.schemas.lab_result import FileObject
 
 
 class ChatBase(BaseModel):
@@ -23,6 +24,7 @@ class ChatResponse(ChatBase):
 
 	id: uuid.UUID
 	user_id: uuid.UUID | None
+	file: FileObject | None = None
 	sent_at: datetime
 
 	model_config = ConfigDict(from_attributes=True)
