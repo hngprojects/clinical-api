@@ -3,6 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
+from app.core.password_policy import validate_password_strength
 from app.models.auth_session import AuthSession
 from app.schemas.user import UserResponse
 
@@ -43,20 +44,7 @@ class SignupRequest(BaseModel):
 	@field_validator("password")
 	@classmethod
 	def password_strength(cls, v: str) -> str:
-		errors = []
-		if len(v) < 8:
-			errors.append("at least 8 characters")
-		if not any(c.isupper() for c in v):
-			errors.append("one uppercase letter")
-		if not any(c.islower() for c in v):
-			errors.append("one lowercase letter")
-		if not any(c.isdigit() for c in v):
-			errors.append("one number")
-		if not any(c in "!@#$%^&*()_+-=[]{}|;':\",./<>?" for c in v):
-			errors.append("one special character")
-		if errors:
-			raise ValueError("Password must contain " + ", ".join(errors) + ".")
-		return v
+		return validate_password_strength(v)
 
 	@model_validator(mode="after")
 	def passwords_match(self) -> "SignupRequest":
@@ -150,6 +138,11 @@ class ResetPasswordRequest(BaseModel):
 	token: str = Field(min_length=6, max_length=512)
 	new_password: str = Field(min_length=8, max_length=72)
 
+	@field_validator("new_password")
+	@classmethod
+	def password_strength(cls, v: str) -> str:
+		return validate_password_strength(v)
+
 
 class AuthSessionResponse(BaseModel):
 	"""A per-device authenticated session (refresh token not exposed)."""
@@ -167,8 +160,10 @@ class AuthSessionResponse(BaseModel):
 	def from_session(cls, row: AuthSession) -> "AuthSessionResponse":
 		platform: str | None = None
 		device_id = row.device_id
+
 		if ":" in device_id:
 			platform, _, device_id = device_id.partition(":")
+
 		return cls(
 			id=row.id,
 			device_id=device_id,
