@@ -19,7 +19,7 @@ class ChatRepository(BaseRepository[Chat]):
 		result = await self._session.execute(
 			select(Chat)
 			.where(Chat.medical_case_id == medical_case_id)
-			.order_by(Chat.sent_at.asc())
+			.order_by(Chat.sent_at.asc(), Chat.id.asc())
 			.offset(offset)
 			.limit(limit)
 		)
@@ -70,7 +70,10 @@ class ChatRepository(BaseRepository[Chat]):
 	) -> list[Chat]:
 		"""Fetch the most recent `limit` messages in chronological order."""
 		result = await self._session.execute(
-			select(Chat).where(Chat.medical_case_id == medical_case_id).order_by(Chat.sent_at.desc()).limit(limit)
+			select(Chat)
+			.where(Chat.medical_case_id == medical_case_id)
+			.order_by(Chat.sent_at.desc(), Chat.id.desc())
+			.limit(limit)
 		)
 		chats = list(result.scalars().all())
 		chats.reverse()

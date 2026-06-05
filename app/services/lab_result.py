@@ -7,10 +7,12 @@ from app.models.guest_session import GuestSession
 from app.models.lab_result import LabResult, OCRStatus
 from app.models.medical_case import MedicalCase, MedicalCaseStatus
 from app.models.user import User
+from app.repositories.chat import ChatRepository
 from app.repositories.lab_result import LabResultRepository
 from app.repositories.medical_case import MedicalCaseRepository
 from app.schemas.lab_result import LabResultCreate, LabResultUpdate, UploadRequest
 from app.services.guest_sessions import GuestSessionManager, GuestUsageAction
+from app.services.websocket_chat import save_file_message
 
 
 async def upload_lab_result(
@@ -48,16 +50,27 @@ async def upload_lab_result(
 	await case_repo.commit()
 	await case_repo.refresh(case)
 
-	if user is None and manager is not None and guest_session_uuid is not None:
-		await manager.increment_upload(guest_session_uuid)
-
 	# Attach the lab result
+	file_data = payload.file.model_dump()
 	lab_result = LabResult(
 		medical_case_id=case.id,
-		file=payload.file.model_dump(),
+		file=file_data,
 		ocr_status=OCRStatus.PENDING,
 	)
 	lab_repo.add(lab_result)
+	await lab_repo._session.flush()
+
+	# Create file-card chat message (same session, defer commit)
+	chat_repo = ChatRepository(lab_repo._session)
+	await save_file_message(
+		chat_repo,
+		case.id,
+		file_data,
+		lab_result_id=lab_result.id,
+		do_commit=False,
+	)
+
+	# Single atomic commit for both LabResult + Chat message
 	await lab_repo.commit()
 	await lab_repo.refresh(lab_result)
 
@@ -116,10 +129,26 @@ async def handle_file_upload(
 
 	lab_result = LabResult(
 		medical_case_id=case.id,
-		file={"name": file_metadata["filename"], "url": file_metadata["file_url"]},
+		file={
+			"name": file_metadata["filename"],
+			"url": file_metadata["file_url"],
+			"mime_type": file_metadata["mime_type"],
+		},
 		ocr_status=OCRStatus.PENDING,
 	)
 	lab_repo.add(lab_result)
+
+	# Create file-card chat message (same session, defer commit)
+	chat_repo = ChatRepository(lab_repo._session)
+	await save_file_message(
+		chat_repo,
+		case.id,
+		file_metadata,
+		lab_result_id=lab_result.id,
+		do_commit=False,
+	)
+
+	# Single atomic commit for both LabResult + Chat message
 	await lab_repo.commit()
 	await lab_repo.refresh(lab_result)
 
@@ -157,12 +186,25 @@ async def create_lab_result(
 	if case is None:
 		raise NotFoundError("Medical case not found.")
 
+	file_data = payload.file.model_dump()
 	lab_result = LabResult(
 		medical_case_id=payload.medical_case_id,
-		file=payload.file.model_dump(),
+		file=file_data,
 		ocr_status=payload.ocr_status,
 	)
 	lab_repo.add(lab_result)
+
+	# Create file-card chat message (same session, defer commit)
+	chat_repo = ChatRepository(lab_repo._session)
+	await save_file_message(
+		chat_repo,
+		case.id,
+		file_data,
+		lab_result_id=lab_result.id,
+		do_commit=False,
+	)
+
+	# Single atomic commit for both LabResult + Chat message
 	await lab_repo.commit()
 	await lab_repo.refresh(lab_result)
 
@@ -211,12 +253,29 @@ async def add_file_to_case(
 
 	file_metadata = await upload_medical_file(file, filename, content_type, public_url_base)
 
+	file_data = {
+		"name": file_metadata["filename"],
+		"url": file_metadata["file_url"],
+		"mime_type": file_metadata["mime_type"],
+	}
 	lab_result = LabResult(
 		medical_case_id=case_id,
-		file={"name": file_metadata["filename"], "url": file_metadata["file_url"]},
+		file=file_data,
 		ocr_status=OCRStatus.PENDING,
 	)
 	lab_repo.add(lab_result)
+
+	# Create file-card chat message (same session, defer commit)
+	chat_repo = ChatRepository(lab_repo._session)
+	await save_file_message(
+		chat_repo,
+		case_id,
+		file_data,
+		lab_result_id=lab_result.id,
+		do_commit=False,
+	)
+
+	# Single atomic commit for both LabResult + Chat message
 	await lab_repo.commit()
 	await lab_repo.refresh(lab_result)
 

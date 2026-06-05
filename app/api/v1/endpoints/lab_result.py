@@ -10,6 +10,7 @@ from app.api.deps import (
 	SessionContextDep,
 )
 from app.core.exceptions import BadRequestError, ForbiddenError, UnauthorizedError
+from app.core.guest_upload_lock import acquire_guest_upload_lock, release_guest_upload_lock
 from app.core.responses import SuccessResponse
 from app.schemas.lab_result import LabResultResponse, UploadResponse
 from app.services.guest_sessions import GuestUsageAction
@@ -49,9 +50,10 @@ async def upload(
 	if ctx.user is not None and ctx.guest_session_id is not None:
 		raise ForbiddenError("Authenticated users cannot upload using a guest session.")
 
-	# Enforce guest upload limit before accepting the file
-	if ctx.user is None and ctx.guest_session_id is not None:
-		await manager.can_use(ctx.guest_session_id, GuestUsageAction.UPLOAD)
+	guest_session_id = ctx.guest_session_id
+	if ctx.user is None and guest_session_id is not None:
+		await manager.can_use(guest_session_id, GuestUsageAction.UPLOAD)
+		await acquire_guest_upload_lock(guest_session_id)
 
 	valid_media_types = {
 		"image/jpeg",
@@ -70,20 +72,21 @@ async def upload(
 		raise BadRequestError("File size must be 10MB or smaller.")
 
 	public_url_base = str(request.base_url).rstrip("/")
-	case, lab_result = await handle_file_upload(
-		lab_repo,
-		case_repo,
-		file_contents,
-		file.filename,
-		file.content_type or "application/octet-stream",
-		ctx.user,
-		ctx.guest_session_id,
-		public_url_base,
-	)
-
-	# Increment the guest upload counter after successful upload
-	if ctx.user is None and ctx.guest_session_id is not None:
-		await manager.increment_upload(ctx.guest_session_id)
+	try:
+		case, lab_result = await handle_file_upload(
+			lab_repo,
+			case_repo,
+			file_contents,
+			file.filename,
+			file.content_type or "application/octet-stream",
+			ctx.user,
+			guest_session_id,
+			public_url_base,
+		)
+	except Exception:
+		if ctx.user is None and guest_session_id is not None:
+			await release_guest_upload_lock(guest_session_id)
+		raise
 
 	return SuccessResponse(
 		message="Upload received. Processing started.",

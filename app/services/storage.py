@@ -35,7 +35,22 @@ async def upload_medical_file(
 
 	return {
 		"filename": filename,
-		"file_type": content_type or "application/octet-stream",
+		"mime_type": content_type or "application/octet-stream",
 		"file_size": len(data),
 		"file_url": file_url,
 	}
+
+
+def delete_medical_file_by_url(file_url: str) -> None:
+	"""Delete a file previously stored under MEDIA_DIR (best-effort)."""
+	if "/media/" not in file_url:
+		return
+	name = file_url.split("/media/", 1)[-1].split("?")[0]
+	if not name or ".." in name or "/" in name:
+		return
+	settings = get_settings()
+	path = Path(settings.MEDIA_DIR) / name
+	try:
+		path.unlink(missing_ok=True)
+	except OSError as exc:
+		logger.warning("Failed to delete media file %s: %s", path, exc)

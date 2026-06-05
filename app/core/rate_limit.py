@@ -8,8 +8,18 @@ from app.core.redis_client import get_redis
 
 
 async def enforce_rate_limit(*, key: str, limit: int, window_seconds: int) -> None:
-	"""Increment a counter for `key` and raise RateLimitExceeded when over `limit`."""
 	redis = await get_redis()
+	if hasattr(redis, "eval"):
+		lua = (
+			"local v = redis.call('INCR', KEYS[1])\n"
+			"if v == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end\n"
+			"if v > tonumber(ARGV[2]) then return -1 end\n"
+			"return v"
+		)
+		result = await redis.eval(lua, 1, key, window_seconds, limit)
+		if int(result) == -1:
+			raise RateLimitExceeded()
+		return
 	count = await redis.incr(key)
 	if count == 1:
 		await redis.expire(key, window_seconds)
@@ -18,7 +28,6 @@ async def enforce_rate_limit(*, key: str, limit: int, window_seconds: int) -> No
 
 
 async def enforce_guest_session_create_limit(ip_hash: str) -> None:
-	"""Rate-limit POST /guest-session per hashed client IP."""
 	settings = get_settings()
 	await enforce_rate_limit(
 		key=f"rl:guest-session:create:{ip_hash}",
@@ -32,19 +41,15 @@ def _login_failure_key(ip_hash: str) -> str:
 
 
 async def assert_login_not_rate_limited(ip_hash: str) -> None:
-	"""Block login when too many recent failures were recorded for this IP."""
 	settings = get_settings()
 	redis = await get_redis()
 	raw = await redis.get(_login_failure_key(ip_hash))
 	count = int(raw) if raw else 0
 	if count > settings.LOGIN_FAILURE_RATE_LIMIT:
-		raise RateLimitExceeded(
-			"Too many failed login attempts. Please try again later.",
-		)
+		raise RateLimitExceeded("Too many failed login attempts. Please try again later.")
 
 
 async def record_login_failure(ip_hash: str) -> None:
-	"""Increment the failed-login counter for this IP."""
 	settings = get_settings()
 	redis = await get_redis()
 	key = _login_failure_key(ip_hash)
@@ -52,12 +57,43 @@ async def record_login_failure(ip_hash: str) -> None:
 	if count == 1:
 		await redis.expire(key, settings.LOGIN_FAILURE_RATE_WINDOW_SECONDS)
 	if count > settings.LOGIN_FAILURE_RATE_LIMIT:
-		raise RateLimitExceeded(
-			"Too many failed login attempts. Please try again later.",
-		)
+		raise RateLimitExceeded("Too many failed login attempts. Please try again later.")
 
 
 async def clear_login_failures(ip_hash: str) -> None:
-	"""Reset failed-login counter after a successful login."""
 	redis = await get_redis()
 	await redis.delete(_login_failure_key(ip_hash))
+
+
+async def enforce_action_rate_limit(*, key: str, limit: int, window_seconds: int, message: str) -> None:
+	redis = await get_redis()
+	if hasattr(redis, "eval"):
+		lua = (
+			"local v = redis.call('INCR', KEYS[1])\n"
+			"if v == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end\n"
+			"if v > tonumber(ARGV[2]) then return -1 end\n"
+			"return v"
+		)
+		result = await redis.eval(lua, 1, key, window_seconds, limit)
+		if int(result) == -1:
+			raise RateLimitExceeded(message)
+		return
+	count = await redis.incr(key)
+	if count == 1:
+		await redis.expire(key, window_seconds)
+	if count > limit:
+		raise RateLimitExceeded(message)
+
+
+def _verify_otp_fail_key(ip_hash: str) -> str:
+	return f"rl:verify-otp-fail:{ip_hash}"
+
+
+async def record_verify_otp_failure(ip_hash: str) -> None:
+	settings = get_settings()
+	await enforce_action_rate_limit(
+		key=_verify_otp_fail_key(ip_hash),
+		limit=settings.OTP_FAILURE_RATE_LIMIT,
+		window_seconds=settings.OTP_FAILURE_RATE_WINDOW_SECONDS,
+		message="Too many OTP verification attempts. Try again later.",
+	)
