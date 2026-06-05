@@ -91,7 +91,7 @@ async def authenticate_credentials(
 	"""
 	user = await user_repo.get_by_email(email)
 	if user is None:
-		raise NotFoundError("No account found for this email.")
+		raise NotFoundError("Login failed. Check your credentials and try again.")
 	if not user.is_active:
 		raise ForbiddenError("This account is disabled.")
 	if not user.is_email_verified:
