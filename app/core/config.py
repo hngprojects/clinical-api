@@ -36,8 +36,8 @@ class Settings(BaseSettings):
 	# JWT
 	JWT_SECRET: str = Field(min_length=32)
 	JWT_ALGORITHM: str = "HS256"
-	JWT_ACCESS_TOKEN_EXPIRES_MINUTES: int = 3
-	JWT_REFRESH_TOKEN_EXPIRES_MINUTES: int = 5
+	JWT_ACCESS_TOKEN_EXPIRES_MINUTES: int = 60
+	JWT_REFRESH_TOKEN_EXPIRES_MINUTES: int = 60 * 24 * 3  # 3 days
 
 	# OTP
 	OTP_LENGTH: int = 6
@@ -97,7 +97,7 @@ class Settings(BaseSettings):
 	AUTH_SESSION_ABSOLUTE_DAYS: int = 90
 
 	# OAuth
-	OAUTH_STATE_EXPIRES_MINUTES: int = 10
+	OAUTH_STATE_EXPIRES_MINUTES: int = 60
 
 	AI_PROVIDER: str = "auto"
 
