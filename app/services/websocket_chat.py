@@ -73,31 +73,35 @@ async def build_system_prompt(
 		if interpretation.value_breakdown:
 			value_breakdown = json.dumps(interpretation.value_breakdown, indent=2)
 
-	# Get extracted values from the most recently completed lab result
+	# Get extracted values from ALL completed lab results for this case
 	from sqlalchemy import select
 
 	from app.models.lab_result import LabResult, OCRStatus
 
-	result = await lab_repo._session.execute(
+	rows = await lab_repo._session.execute(
 		select(LabResult)
 		.where(
 			LabResult.medical_case_id == case_id,
 			LabResult.ocr_status == OCRStatus.COMPLETE,
 		)
-		.order_by(LabResult.ocr_completed_at.desc())
-		.limit(1)
+		.order_by(LabResult.ocr_completed_at.asc())
 	)
-	lab = result.scalar_one_or_none()
-	extracted_values = ""
-	if lab and lab.extracted_values:
-		extracted_values = json.dumps(lab.extracted_values, indent=2)
+	labs = rows.scalars().all()
+
+	all_extracted: list[str] = []
+	for i, lab in enumerate(labs, start=1):
+		if lab.extracted_values:
+			label = f"## Extracted Lab Values (Upload {i} — {lab.ocr_completed_at.strftime('%Y-%m-%d') if lab.ocr_completed_at else 'unknown date'})"
+			all_extracted.append(f"{label}\n{json.dumps(lab.extracted_values, indent=2)}")
+
+	extracted_values_block = "\n\n".join(all_extracted)
 
 	# Build the prompt in sections
 	parts = [
 		"You are a medical assistant helping a patient understand their lab results.",
 		"Be clear, compassionate, and avoid unnecessary medical jargon.",
-		"Provide concise explanation of each metrics in a plane and simple manner"
-		"Allow the user understand their result and provide direct answers to their follow up question based on their result"
+		"Provide concise explanation of each metrics in a plain and simple manner. "
+		"Allow the user to understand their result and provide direct answers to their follow up questions based on their result. "
 		"Never diagnose. Always recommend consulting a healthcare professional for medical decisions.",
 		"",
 	]
@@ -108,10 +112,10 @@ async def build_system_prompt(
 	if value_breakdown:
 		parts += ["## Value Breakdown", value_breakdown, ""]
 
-	if extracted_values:
-		parts += ["## Extracted Lab Values", extracted_values, ""]
+	if extracted_values_block:
+		parts += [extracted_values_block, ""]
 
-	if not summary and not extracted_values:
+	if not summary and not extracted_values_block:
 		parts.append(
 			"No lab results have been processed yet for this case. "
 			"Answer general health questions helpfully but note you don't "
@@ -188,10 +192,13 @@ async def save_user_message(
 	case_id: uuid.UUID,
 	user_id: uuid.UUID | None,
 	text: str,
+	*,
+	do_commit: bool = True,
 ) -> Chat:
 	"""
 	Save a patient message to the database.
 	Content is stored as {"text": "..."} to match the JSONB schema.
+	Pass do_commit=False to defer the commit to the caller's transaction.
 	"""
 	msg = Chat(
 		user_id=user_id,
@@ -200,8 +207,9 @@ async def save_user_message(
 		content={"text": text},
 	)
 	chat_repo.add(msg)
-	await chat_repo.commit()
-	await chat_repo.refresh(msg)
+	if do_commit:
+		await chat_repo.commit()
+		await chat_repo.refresh(msg)
 	logger.debug("[chat] saved user message id=%s case=%s", msg.id, case_id)
 	return msg
 

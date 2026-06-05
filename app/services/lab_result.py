@@ -12,7 +12,7 @@ from app.repositories.lab_result import LabResultRepository
 from app.repositories.medical_case import MedicalCaseRepository
 from app.schemas.lab_result import LabResultCreate, LabResultUpdate, UploadRequest
 from app.services.guest_sessions import GuestSessionManager, GuestUsageAction
-from app.services.websocket_chat import save_file_message
+from app.services.websocket_chat import save_file_message, save_user_message
 
 
 async def upload_lab_result(
@@ -238,8 +238,15 @@ async def add_file_to_case(
 	filename: str,
 	content_type: str,
 	public_url_base: str,
+	*,
+	user_id: UUID | None = None,
+	note: str | None = None,
 ) -> LabResult:
-	"""Upload a file and attach it as a new lab result to an existing medical case."""
+	"""Upload a file and attach it as a new lab result to an existing medical case.
+
+	If `note` is provided it is saved as a PATIENT chat message immediately after
+	the file-card, giving the AI context about what the user wants to know.
+	"""
 	from app.services.storage import upload_medical_file
 	from app.tasks.pipeline import run_lab_result_pipeline
 
@@ -275,7 +282,11 @@ async def add_file_to_case(
 		do_commit=False,
 	)
 
-	# Single atomic commit for both LabResult + Chat message
+	# If the user attached a note, save it as a patient message in the same transaction
+	if note:
+		await save_user_message(chat_repo, case_id, user_id, note, do_commit=False)
+
+	# Single atomic commit for LabResult + file-card + optional note
 	await lab_repo.commit()
 	await lab_repo.refresh(lab_result)
 
