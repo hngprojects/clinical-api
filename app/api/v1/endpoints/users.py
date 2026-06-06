@@ -1,11 +1,12 @@
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Cookie, Depends, status
+from fastapi import APIRouter, Cookie, Depends, File, Request, UploadFile, status
 from fastapi.security import HTTPAuthorizationCredentials
 
 from app.api.deps import AuthSessionManagerDep, CurrentUser, OtpRepo, TokenBlocklistRepo, UserRepo, bearer_scheme
 from app.core.config import get_settings
+from app.core.exceptions import BadRequestError
 from app.core.rate_limit import enforce_action_rate_limit
 from app.core.responses import SuccessResponse
 from app.models.otp import OtpPurpose
@@ -19,10 +20,12 @@ from app.schemas.user import (
 from app.services.auth import (
 	delete_account,
 	start_email_change,
+	update_avatar,
 	update_password,
 	update_profile,
 	verify_email_change,
 )
+from app.services.storage import delete_medical_file_by_url, upload_medical_file
 from app.tasks.emails import send_otp_email_task
 
 logger = logging.getLogger(__name__)
@@ -162,3 +165,63 @@ async def delete_account_endpoint(
 	)
 	await user_repo.commit()
 	return SuccessResponse(message="Account deleted successfully")
+
+
+ALLOWED_AVATAR_MIME_TYPES = frozenset({"image/jpeg", "image/png", "image/webp"})
+MAX_AVATAR_SIZE = 5 * 1024 * 1024  # 5 MB
+
+
+@router.patch("/me/avatar", response_model=SuccessResponse[UserResponse], status_code=status.HTTP_200_OK)
+async def update_avatar_endpoint(
+	request: Request,
+	current_user: CurrentUser,
+	user_repo: UserRepo,
+	file: UploadFile = File(...),
+) -> SuccessResponse[UserResponse]:
+	"""Update the authenticated user's profile picture.
+
+	Accepts JPEG, PNG, or WebP images up to 5 MB. The previous avatar file
+	is cleaned up from storage when replaced.
+	"""
+	if file.content_type not in ALLOWED_AVATAR_MIME_TYPES:
+		raise BadRequestError(
+			"Unsupported file type. Acceptable types are JPEG, PNG, or WebP.",
+		)
+
+	if file.size is not None and file.size > MAX_AVATAR_SIZE:
+		raise BadRequestError("File size must be 5MB or smaller.")
+
+	file_contents = await file.read()
+	if len(file_contents) > MAX_AVATAR_SIZE:
+		raise BadRequestError("File size must be 5MB or smaller.")
+
+	public_url_base = str(request.base_url).rstrip("/")
+	# upload_medical_file already raises BadGatewayError on failure; let it propagate.
+	upload_result = await upload_medical_file(
+		data=file_contents,
+		filename=file.filename or "avatar",
+		content_type=file.content_type or "application/octet-stream",
+		public_url_base=public_url_base,
+	)
+
+	new_avatar_url: str | None = upload_result["file_url"]
+
+	# Capture old avatar URL before mutating the user model.
+	old_avatar_url = current_user.avatar_url
+
+	updated_user = await update_avatar(
+		user_repo,
+		user=current_user,
+		avatar_url=new_avatar_url,
+	)
+	await user_repo.commit()
+	await user_repo.refresh(updated_user)
+
+	# Clean up old avatar file from storage only after DB commit succeeds.
+	if old_avatar_url:
+		delete_medical_file_by_url(old_avatar_url)
+
+	return SuccessResponse(
+		message="Profile picture updated successfully",
+		data=UserResponse.model_validate(updated_user),
+	)

@@ -67,6 +67,7 @@ class UserResponse(UserBase):
 
 	id: UUID
 	google_id: str | None = None
+	avatar_url: str | None = None
 	created_at: datetime
 	last_login_at: datetime | None = None
 
