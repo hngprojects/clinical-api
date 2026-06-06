@@ -55,6 +55,7 @@ class User(Base):
 		nullable=False,
 		default=True,
 	)
+	avatar_url: Mapped[str | None] = mapped_column(String, nullable=True)
 	created_at: Mapped[datetime] = mapped_column(
 		DateTime(timezone=True),
 		nullable=False,
