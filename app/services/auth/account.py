@@ -247,6 +247,17 @@ async def update_profile(
 	return user
 
 
+async def update_avatar(
+	user_repo: UserRepository,
+	*,
+	user: User,
+	avatar_url: str | None,
+) -> User:
+	"""Update the user's avatar URL. Replaces the existing value."""
+	user.avatar_url = avatar_url
+	return user
+
+
 async def update_password(
 	user_repo: UserRepository,
 	blocklist_repo: TokenBlocklistRepository,
