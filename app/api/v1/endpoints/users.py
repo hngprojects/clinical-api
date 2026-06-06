@@ -25,7 +25,7 @@ from app.services.auth import (
 	update_profile,
 	verify_email_change,
 )
-from app.services.storage import delete_medical_file_by_url, upload_medical_file
+from app.services.storage import delete_medical_file_by_url, upload_file
 from app.tasks.emails import send_otp_email_task
 
 logger = logging.getLogger(__name__)
@@ -196,12 +196,12 @@ async def update_avatar_endpoint(
 		raise BadRequestError("File size must be 5MB or smaller.")
 
 	public_url_base = str(request.base_url).rstrip("/")
-	# upload_medical_file already raises BadGatewayError on failure; let it propagate.
-	upload_result = await upload_medical_file(
+	upload_result = await upload_file(
 		data=file_contents,
 		filename=file.filename or "avatar",
 		content_type=file.content_type or "application/octet-stream",
 		public_url_base=public_url_base,
+		subdir="avatars",
 	)
 
 	new_avatar_url: str | None = upload_result["file_url"]

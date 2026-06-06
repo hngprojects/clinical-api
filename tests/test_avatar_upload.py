@@ -17,7 +17,7 @@ API = "/api/v1"
 
 # Patch the storage functions at the importing module (users.py) because they
 # are module-level imports, not lazy function-level imports.
-_STORAGE_UPLOAD_PATCH = "app.api.v1.endpoints.users.upload_medical_file"
+_STORAGE_UPLOAD_PATCH = "app.api.v1.endpoints.users.upload_file"
 _STORAGE_DELETE_PATCH = "app.api.v1.endpoints.users.delete_medical_file_by_url"
 
 
@@ -59,7 +59,7 @@ def _auth_headers(user_id: uuid.UUID) -> dict[str, str]:
 def _fake_upload_result(filename: str, mime_type: str) -> dict:
     return {
         "filename": filename,
-        "file_url": f"http://test/media/{filename}",
+        "file_url": f"http://test/media/avatars/{filename}",
         "mime_type": mime_type,
         "file_size": 1024,
     }
@@ -85,7 +85,7 @@ async def test_upload_avatar_success(client) -> None:
         body = response.json()
         assert body["status"] == "success"
         assert body["message"] == "Profile picture updated successfully"
-        assert body["data"]["avatar_url"] == "http://test/media/avatar.jpg"
+        assert body["data"]["avatar_url"] == "http://test/media/avatars/avatar.jpg"
     finally:
         await _delete_user(user.id)
 
@@ -96,7 +96,7 @@ async def test_upload_avatar_replaces_old_avatar(client) -> None:
     # Set an existing avatar_url so it gets replaced.
     async with AsyncSessionLocal() as session:
         db_user = await session.get(User, user.id)
-        db_user.avatar_url = "http://test/media/old_avatar.jpg"
+        db_user.avatar_url = "http://test/media/avatars/old_avatar.jpg"
         await session.commit()
 
     try:
@@ -112,8 +112,8 @@ async def test_upload_avatar_replaces_old_avatar(client) -> None:
             )
         assert response.status_code == 200
         body = response.json()
-        assert body["data"]["avatar_url"] == "http://test/media/new_avatar.jpg"
-        mock_delete.assert_called_once_with("http://test/media/old_avatar.jpg")
+        assert body["data"]["avatar_url"] == "http://test/media/avatars/new_avatar.jpg"
+        mock_delete.assert_called_once_with("http://test/media/avatars/old_avatar.jpg")
     finally:
         await _delete_user(user.id)
 
