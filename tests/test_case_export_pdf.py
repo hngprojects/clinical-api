@@ -34,6 +34,7 @@ async def _seed_export_case(
 				user_id=user_id,
 				guest_session_id=guest_session_id,
 				status=MedicalCaseStatus.COMPLETE,
+				title="Complete Blood Count",
 				created_at=now,
 			)
 		)
@@ -80,7 +81,7 @@ async def test_case_export_returns_pdf_download(client, test_user, auth_headers)
 	pdf_bytes = resp.content
 	for marker in [
 		b"ClinInsights",
-		b"AI Lab Result Interpretation Report",
+		b"Complete Blood Count",
 		b"Patient Information",
 		b"AI Summary",
 		b"Lab Results Breakdown",
