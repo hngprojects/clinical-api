@@ -214,7 +214,13 @@ async def update_avatar_endpoint(
 		user=current_user,
 		avatar_url=new_avatar_url,
 	)
-	await user_repo.commit()
+	try:
+		await user_repo.commit()
+	except Exception:
+		# DB commit failed — clean up the newly uploaded file to avoid orphans.
+		delete_medical_file_by_url(new_avatar_url)
+		raise
+
 	await user_repo.refresh(updated_user)
 
 	# Clean up old avatar file from storage only after DB commit succeeds.
