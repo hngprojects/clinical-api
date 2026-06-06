@@ -56,13 +56,13 @@ shape:
 }
 
 Rules:
-- Infer a short title from the report itself, such as the lab name,
-  report type, or header text.
+- Infer a short, specific title from the report itself — use the lab name,
+  panel type, or header text visible in the document.
+- If no explicit title is present, derive one from the tests included.
 - Do not use the file URL or filename as the title.
-- If the document title is unclear, use "Laboratory Report".
 - Include every test line visible in the document.
 - Preserve the original value string exactly (e.g. "11.2", ">0.5", "NEGATIVE").
-- If a field is absent from the document, use null.
+- If a field is absent from the document, use 'MISSING DATA'.
 - Do not add commentary, explanations, or any text outside the JSON object.
 """
 
@@ -161,7 +161,7 @@ async def extract_lab_values(file_url: str) -> dict[str, Any]:
 
 	title = extracted.get("title")
 	if not isinstance(title, str) or not title.strip() or title.strip().startswith("<"):
-		extracted["title"] = "Laboratory Report"
+		extracted["title"] = ""
 	else:
 		extracted["title"] = title.strip()
 

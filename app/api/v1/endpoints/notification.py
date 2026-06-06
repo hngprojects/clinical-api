@@ -47,14 +47,9 @@ async def _stream_notifications(
 	- Replay is performed using a short-lived session that is closed after replay.
 	- Live events use a fresh session per incoming event to avoid holding DB connections for the lifetime of the SSE connection.
 	- Keepalive pings are sent approximately every 30s.
-	- We enforce a single active SSE per user via ConnectionRegistry.
+	- Single active SSE per user is enforced in the endpoint handler before this generator is created.
 	"""
 	logger.debug("SSE generator started for user=%s", current_user.id)
-
-	# Enforce single active stream per user
-	if connection_registry.get_stream_count(current_user.id) >= 1:
-		logger.info("SSE connection refused: active stream exists for user=%s", current_user.id)
-		raise HTTPException(status_code=409, detail="Another SSE connection is already active for this user")
 
 	# Register stream so other callers know there's an active connection
 	connection_registry.register_stream(current_user.id)
@@ -115,6 +110,9 @@ async def _stream_notifications(
 				if event is None:
 					logger.debug("SSE yielding ping for user=%s", current_user.id)
 					yield b": ping\n\n"
+					if await request.is_disconnected():
+						logger.info("SSE client disconnected (ping check) for user=%s", current_user.id)
+						return
 					continue
 
 				if not isinstance(event, dict):
@@ -293,6 +291,12 @@ async def stream_notifications(
 	last_event_id: str | None = Header(None, alias="Last-Event-ID"),
 ) -> StreamingResponse:
 	"""Open a server-sent events stream for authenticated notifications."""
+	# Enforce single active stream per user BEFORE creating the response so the
+	# client receives a proper 409, not a broken SSE stream.
+	if connection_registry.get_stream_count(current_user.id) >= 1:
+		logger.info("SSE connection refused: active stream exists for user=%s", current_user.id)
+		raise HTTPException(status_code=409, detail="Another SSE connection is already active for this user")
+
 	return StreamingResponse(
 		_stream_notifications(
 			request,
