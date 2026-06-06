@@ -30,7 +30,10 @@ def _load_logo(height_mm: float = 10):
 	"""Return a scaled Drawing for the logo, or None if the file is missing."""
 	if not _LOGO_PATH.exists():
 		return None
-	drawing = svg2rlg(str(_LOGO_PATH))
+	try:
+		drawing = svg2rlg(str(_LOGO_PATH))
+	except Exception:
+		return None
 	if drawing is None or drawing.height == 0:
 		return None
 	scale = (height_mm * mm) / drawing.height
