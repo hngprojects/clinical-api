@@ -7,14 +7,17 @@ pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
 async def test_subscribe_success(client: AsyncClient, monkeypatch: pytest.MonkeyPatch) -> None:
-	"""Test successful subscription proxy to MailerLite."""
+	"""Test successful subscription proxy to MailerLite on v1 path."""
 	settings = get_settings()
 	monkeypatch.setattr(settings, "MAILERLITE_API_KEY", "test-api-key")
 
 	mock_response = Response(201, json={"id": "123"})
 
-	with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
-		mock_post.return_value = mock_response
+	with patch("app.api.v1.endpoints.subscribe.httpx.AsyncClient") as mock_client_cls:
+		mock_client = AsyncMock()
+		mock_client.post.return_value = mock_response
+		mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+		mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
 
 		response = await client.post(
 			"/api/v1/subscribe",
@@ -29,8 +32,8 @@ async def test_subscribe_success(client: AsyncClient, monkeypatch: pytest.Monkey
 		assert response.status_code == 200
 		assert response.json() == {"success": True}
 
-		mock_post.assert_called_once()
-		args, kwargs = mock_post.call_args
+		mock_client.post.assert_called_once()
+		args, kwargs = mock_client.post.call_args
 		assert args[0] == "https://connect.mailerlite.com/api/subscribers"
 		assert kwargs["json"]["email"] == "ngozi@example.com"
 		assert kwargs["json"]["fields"]["name"] == "Ngozi"
@@ -76,8 +79,11 @@ async def test_subscribe_mailerlite_error(client: AsyncClient, monkeypatch: pyte
 
 	mock_response = Response(400, text="Bad Request")
 
-	with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
-		mock_post.return_value = mock_response
+	with patch("app.api.v1.endpoints.subscribe.httpx.AsyncClient") as mock_client_cls:
+		mock_client = AsyncMock()
+		mock_client.post.return_value = mock_response
+		mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+		mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
 
 		response = await client.post(
 			"/api/v1/subscribe",
@@ -97,8 +103,11 @@ async def test_subscribe_request_error(client: AsyncClient, monkeypatch: pytest.
 	settings = get_settings()
 	monkeypatch.setattr(settings, "MAILERLITE_API_KEY", "test-api-key")
 
-	with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
-		mock_post.side_effect = RequestError("Timeout", request=Request("POST", "https://example.com"))
+	with patch("app.api.v1.endpoints.subscribe.httpx.AsyncClient") as mock_client_cls:
+		mock_client = AsyncMock()
+		mock_client.post.side_effect = RequestError("Timeout", request=Request("POST", "https://example.com"))
+		mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+		mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
 
 		response = await client.post(
 			"/api/v1/subscribe",
