@@ -15,6 +15,7 @@ from app.api.v1.endpoints import (
 	users,
 	waitlist,
 	ws_chat,
+	subscribe,
 )
 
 api_router = APIRouter()
@@ -29,6 +30,7 @@ api_router.include_router(chat.router)
 api_router.include_router(notification.router)
 api_router.include_router(waitlist.router)
 api_router.include_router(contact.router)
+api_router.include_router(subscribe.router)
 api_router.include_router(export.router)
 api_router.include_router(users.router)
 api_router.include_router(ws_chat.router)
