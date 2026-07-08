@@ -12,10 +12,10 @@ from app.api.v1.endpoints import (
 	lab_result,
 	medical_case,
 	notification,
+	subscribe,
 	users,
 	waitlist,
 	ws_chat,
-	subscribe,
 )
 
 api_router = APIRouter()
