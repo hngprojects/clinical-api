@@ -30,7 +30,9 @@ async def test_subscribe_success(client: AsyncClient, monkeypatch: pytest.Monkey
 		)
 
 		assert response.status_code == 200
-		assert response.json() == {"success": True}
+		body = response.json()
+		assert body["status"] == "success"
+		assert body["message"] == "Subscribed successfully."
 
 		mock_client.post.assert_called_once()
 		args, kwargs = mock_client.post.call_args
@@ -95,7 +97,7 @@ async def test_subscribe_mailerlite_error(client: AsyncClient, monkeypatch: pyte
 		)
 
 		assert response.status_code == 502
-		assert "Subscription failed at MailerLite" in response.json()["detail"]
+		assert "Subscription failed at MailerLite" in response.json()["message"]
 
 
 async def test_subscribe_request_error(client: AsyncClient, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -119,4 +121,4 @@ async def test_subscribe_request_error(client: AsyncClient, monkeypatch: pytest.
 		)
 
 		assert response.status_code == 503
-		assert "Subscription provider is unreachable" in response.json()["detail"]
+		assert "Subscription provider is unreachable" in response.json()["message"]
