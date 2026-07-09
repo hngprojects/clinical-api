@@ -71,7 +71,7 @@ async def test_subscribe_missing_api_key(client: AsyncClient, monkeypatch: pytes
 		}
 	)
 	assert response.status_code == 500
-	assert "service is temporarily unavailable" in response.json()["detail"]
+	assert "service is temporarily unavailable" in response.json()["message"]
 
 
 async def test_subscribe_mailerlite_error(client: AsyncClient, monkeypatch: pytest.MonkeyPatch) -> None:
