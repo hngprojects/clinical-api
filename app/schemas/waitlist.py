@@ -16,6 +16,7 @@ class WaitlistResponse(BaseModel):
 
 	id: UUID
 	email: EmailStr
+	first_name: str | None = None
 	created_at: datetime
 
 	model_config = ConfigDict(from_attributes=True)
