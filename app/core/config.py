@@ -115,7 +115,7 @@ class Settings(BaseSettings):
 	MEDIA_DIR: str = "media"
 	RESEND_API_KEY: str | None = None
 	RESEND_FROM_EMAIL: str = ""
-	MAILERLITE_API_KEY: str | None = Field(default=None)
+	MAILERLITE_API_KEY: str | None = None
 
 	@field_validator("RESEND_FROM_EMAIL", mode="after")
 	@classmethod
