@@ -1,10 +1,9 @@
 import logging
 from datetime import datetime, timezone
-from typing import Annotated
 from uuid import UUID
 
 import jwt
-from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, status
+from fastapi import APIRouter, File, Form, Query, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 

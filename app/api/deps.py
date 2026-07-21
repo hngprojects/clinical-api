@@ -21,6 +21,7 @@ from app.repositories.ai_interpretation import AIInterpretationRepository
 from app.repositories.auth_session import AuthSessionRepository
 from app.repositories.chat import ChatRepository
 from app.repositories.contact import ContactRepository
+from app.repositories.doctor_verification import DoctorVerificationRepository
 from app.repositories.guest_session import GuestSessionRepository
 from app.repositories.lab_result import LabResultRepository
 from app.repositories.medical_case import MedicalCaseRepository
@@ -28,7 +29,6 @@ from app.repositories.notification import NotificationRepository
 from app.repositories.otp import OtpRepository
 from app.repositories.password_reset import PasswordResetRepository
 from app.repositories.pipeline_audit_log import PipelineAuditLogRepository
-from app.repositories.doctor_verification import DoctorVerificationRepository
 from app.repositories.token_blocklist import TokenBlocklistRepository
 from app.repositories.user import UserRepository
 from app.repositories.waitlist import WaitlistRepository

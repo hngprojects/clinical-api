@@ -4,6 +4,12 @@ from app.models.auth_session import AuthSession
 from app.models.base import Base
 from app.models.chat import Chat
 from app.models.contact import ContactMessage
+from app.models.doctor_verification import (
+	DoctorVerification,
+	DoctorVerificationAuditLog,
+	DoctorVerificationDocument,
+	DoctorVerificationStatus,
+)
 from app.models.guest_session import GuestSession
 from app.models.lab_result import LabResult
 from app.models.medical_case import MedicalCase
@@ -13,12 +19,6 @@ from app.models.pipeline_audit_log import PipelineAuditLog
 from app.models.token_blocklist import TokenBlocklist
 from app.models.user import User, UserRole
 from app.models.waitlist import Waitlist
-from app.models.doctor_verification import (
-	DoctorVerification,
-	DoctorVerificationStatus,
-	DoctorVerificationDocument,
-	DoctorVerificationAuditLog,
-)
 
 __all__ = [
 	"Base",

@@ -16,6 +16,7 @@ from app.schemas.auth import (
 	VerifyOtpRequest,
 )
 from app.schemas.chat import ChatBase, ChatCreate, ChatResponse
+from app.schemas.doctor_verification import DoctorVerificationResponse, SignedUrlResponse
 from app.schemas.lab_result import LabResultBase, LabResultCreate, LabResultResponse, LabResultUpdate
 from app.schemas.medical_case import (
 	MedicalCaseBase,
@@ -36,7 +37,6 @@ from app.schemas.user import (
 	UserUpdate,
 )
 from app.schemas.waitlist import WaitlistCreate, WaitlistResponse
-from app.schemas.doctor_verification import DoctorVerificationResponse, SignedUrlResponse
 
 __all__ = [
 	# Doctor Verification

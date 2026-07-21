@@ -1,9 +1,10 @@
 from uuid import UUID
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.doctor_verification import DoctorVerification, DoctorVerificationDocument, DoctorVerificationAuditLog
+from app.models.doctor_verification import DoctorVerification, DoctorVerificationAuditLog, DoctorVerificationDocument
 
 
 class DoctorVerificationRepository:

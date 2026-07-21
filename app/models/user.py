@@ -11,11 +11,11 @@ from app.models.base import Base
 
 if TYPE_CHECKING:
 	from app.models.chat import Chat
+	from app.models.doctor_verification import DoctorVerification
 	from app.models.guest_session import GuestSession
 	from app.models.medical_case import MedicalCase
 	from app.models.notification import Notification
 	from app.models.otp import OtpCode
-	from app.models.doctor_verification import DoctorVerification
 
 
 class UserRole(str, enum.Enum):

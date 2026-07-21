@@ -55,13 +55,11 @@ from app.schemas.auth import (
 from app.schemas.user import UserResponse
 from app.services.auth import (
 	authenticate_credentials,
-	authenticate_otp,
 	create_otp_for_user,
 	create_password_reset,
 	decode_access_token,
 	decode_refresh_token,
 	otp_ttl_seconds,
-	resend_otp,
 	reset_password,
 	revoke_refresh_token,
 	signup_user,
