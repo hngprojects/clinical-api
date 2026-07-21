@@ -97,3 +97,33 @@ async def record_verify_otp_failure(ip_hash: str) -> None:
 		window_seconds=settings.OTP_FAILURE_RATE_WINDOW_SECONDS,
 		message="Too many OTP verification attempts. Try again later.",
 	)
+
+
+def _otp_failure_key(email: str) -> str:
+	return f"rl:otp-fail:{email.strip().lower()}"
+
+
+async def assert_otp_not_locked(email: str) -> None:
+	settings = get_settings()
+	redis = await get_redis()
+	raw = await redis.get(_otp_failure_key(email))
+	count = int(raw) if raw else 0
+	if count >= settings.OTP_FAILURE_RATE_LIMIT:
+		raise RateLimitExceeded("Too many OTP verification attempts. Try again later.")
+
+
+async def record_otp_failure(email: str) -> None:
+	settings = get_settings()
+	redis = await get_redis()
+	key = _otp_failure_key(email)
+	count = await redis.incr(key)
+	if count == 1:
+		await redis.expire(key, settings.OTP_FAILURE_RATE_WINDOW_SECONDS)
+	if count >= settings.OTP_FAILURE_RATE_LIMIT:
+		raise RateLimitExceeded("Too many OTP verification attempts. Try again later.")
+
+
+async def clear_otp_failures(email: str) -> None:
+	redis = await get_redis()
+	await redis.delete(_otp_failure_key(email))
+
