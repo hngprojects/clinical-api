@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 	from app.models.medical_case import MedicalCase
 	from app.models.notification import Notification
 	from app.models.otp import OtpCode
+	from app.models.doctor_verification import DoctorVerification
 
 
 class UserRole(str, enum.Enum):
@@ -22,6 +23,7 @@ class UserRole(str, enum.Enum):
 
 	PATIENT = "patient"
 	ADMIN = "admin"
+	DOCTOR = "doctor"
 
 
 class User(Base):
@@ -73,6 +75,9 @@ class User(Base):
 	migrated_guest_sessions: Mapped[list["GuestSession"]] = relationship(
 		foreign_keys="GuestSession.migrated_user_id",
 		back_populates="migrated_user",
+	)
+	doctor_verification: Mapped["DoctorVerification | None"] = relationship(
+		back_populates="user", cascade="all, delete-orphan"
 	)
 
 	@property

@@ -3,18 +3,22 @@ from typing import Annotated
 
 from fastapi import APIRouter, Cookie, Depends, File, Request, UploadFile, status
 from fastapi.security import HTTPAuthorizationCredentials
+from sqlalchemy import select
 
-from app.api.deps import AuthSessionManagerDep, CurrentUser, OtpRepo, TokenBlocklistRepo, UserRepo, bearer_scheme
+from app.api.deps import AuthSessionManagerDep, CurrentUser, DBSession, OtpRepo, TokenBlocklistRepo, UserRepo, bearer_scheme
 from app.core.config import get_settings
 from app.core.exceptions import BadRequestError
 from app.core.rate_limit import enforce_action_rate_limit
 from app.core.responses import SuccessResponse
+from app.models.doctor_verification import DoctorVerification, DoctorVerificationStatus
 from app.models.otp import OtpPurpose
 from app.schemas.user import (
+	DashboardSummary,
 	EmailUpdateRequest,
 	EmailUpdateVerifyRequest,
 	PasswordUpdateRequest,
 	ProfileUpdateRequest,
+	UserMeResponse,
 	UserResponse,
 )
 from app.services.auth import (
@@ -31,6 +35,44 @@ from app.tasks.emails import send_otp_email_task
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+@router.get("/me", response_model=SuccessResponse[UserMeResponse], status_code=status.HTTP_200_OK)
+async def get_current_user_profile(
+	current_user: CurrentUser,
+	session: DBSession,
+) -> SuccessResponse[UserMeResponse]:
+	"""Primary endpoint returning user profile data, email verification status, doctor verification status, and dashboard payload."""
+	stmt = select(DoctorVerification).where(DoctorVerification.user_id == current_user.id)
+	res = await session.execute(stmt)
+	verification = res.scalar_one_or_none()
+
+	v_status = verification.status.value if verification else "not_submitted"
+	rejection_reason = (
+		verification.rejection_reason
+		if verification and verification.status == DoctorVerificationStatus.REJECTED
+		else None
+	)
+	specialty = verification.specialty if verification else None
+
+	me_payload = UserMeResponse(
+		id=current_user.id,
+		email=current_user.email,
+		first_name=current_user.first_name,
+		last_name=current_user.last_name,
+		role=current_user.role,
+		is_email_verified=current_user.is_email_verified,
+		is_active=current_user.is_active,
+		avatar_url=current_user.avatar_url,
+		specialty=specialty,
+		verification_status=v_status,
+		rejection_reason=rejection_reason,
+		dashboard=DashboardSummary(),
+		created_at=current_user.created_at,
+		last_login_at=current_user.last_login_at,
+	)
+
+	return SuccessResponse(message="User profile retrieved successfully", data=me_payload)
 
 
 @router.post("/me/email", response_model=SuccessResponse, status_code=status.HTTP_200_OK)

@@ -13,6 +13,7 @@ from app.models.pipeline_audit_log import PipelineAuditLog
 from app.models.token_blocklist import TokenBlocklist
 from app.models.user import User, UserRole
 from app.models.waitlist import Waitlist
+from app.models.doctor_verification import DoctorVerification, DoctorVerificationStatus
 
 __all__ = [
 	"Base",
@@ -32,4 +33,6 @@ __all__ = [
 	"User",
 	"UserRole",
 	"Waitlist",
+	"DoctorVerification",
+	"DoctorVerificationStatus",
 ]
