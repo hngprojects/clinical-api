@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Clinsight Verification Status Update</title>
+    <style>
+      @media only screen and (max-width:480px) {
+        .container { padding: 16px !important; border-radius: 0 !important; box-shadow: none !important; }
+        h1 { font-size: 22px !important; }
+        p { font-size: 15px !important; }
+      }
+    </style>
+  </head>
+  <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; color: #333333; background-color: #f7f7f7; width: 100%; padding: 20px 0;">
+    <div class="container" style="width: 100%; max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 24px; border-radius: 8px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);">
+      <h1 style="font-size: 24px; font-weight: 700; margin: 0 0 24px;">Verification Status Update</h1>
+      <p style="font-size: 16px; line-height: 1.6; margin: 0 0 20px;">Dear Dr. {{ first_name }},</p>
+      
+      {% if status == 'pending' %}
+      <p style="font-size: 16px; line-height: 1.6; margin: 0 0 20px;">We have received your professional credential verification request. The team is currently reviewing your medical license and board certifications. You will receive another update as soon as the review is complete.</p>
+      <div style="background-color: #e0f2fe; border: 1px solid #7dd3fc; color: #0369a1; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
+        <p style="font-size: 16px; font-weight: 700; margin: 0 0 8px;">Status: Pending Review</p>
+        <p style="font-size: 14px; margin: 0;">Our standard review window is 24-48 business hours.</p>
+      </div>
+      {% elif status == 'approved' %}
+      <p style="font-size: 16px; line-height: 1.6; margin: 0 0 20px;">Congratulations! Your professional credentials have been successfully verified and approved. You now have full access to your Doctor Dashboard and can begin reviewing clinical cases.</p>
+      <div style="background-color: #dcfce7; border: 1px solid #86efac; color: #166534; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
+        <p style="font-size: 16px; font-weight: 700; margin: 0 0 8px;">Status: Approved</p>
+        <p style="font-size: 14px; margin: 0;">Your profile is now active on the Clinsight Doctor Network.</p>
+      </div>
+      {% elif status == 'rejected' %}
+      <p style="font-size: 16px; line-height: 1.6; margin: 0 0 20px;">We reviewed your professional credential verification request, and unfortunately, we were unable to approve it at this time.</p>
+      <div style="background-color: #fee2e2; border: 1px solid #fca5a5; color: #991b1b; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
+        <p style="font-size: 16px; font-weight: 700; margin: 0 0 8px;">Status: Rejected / Needs Attention</p>
+        {% if rejection_reason %}
+        <p style="font-size: 14px; font-weight: 700; margin: 0 0 4px;">Reason for rejection:</p>
+        <p style="font-size: 14px; margin: 0; font-style: italic;">"{{ rejection_reason }}"</p>
+        {% endif %}
+      </div>
+      <p style="font-size: 16px; line-height: 1.6; margin: 0 0 20px;">Please log in to your dashboard to resubmit your credentials or upload corrected files.</p>
+      {% endif %}
+      
+      <div style="border-top: 1px solid #e5e7eb; padding-top: 20px; font-size: 14px; color: #666666;">
+        <p style="margin: 0 0 8px;">The Clinsight Team</p>
+        <p style="margin: 0 0 8px;">© 2026 Clinsight. All rights reserved</p>
+      </div>
+    </div>
+  </body>
+</html>

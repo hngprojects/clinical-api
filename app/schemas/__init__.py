@@ -28,8 +28,12 @@ from app.schemas.notification import NotificationBase, NotificationCreate, Notif
 from app.schemas.pipeline_audit_log import PipelineAuditLogResponse
 from app.schemas.user import DashboardSummary, GoogleUserCreate, UserBase, UserCreate, UserMeResponse, UserResponse, UserUpdate
 from app.schemas.waitlist import WaitlistCreate, WaitlistResponse
+from app.schemas.doctor_verification import DoctorVerificationResponse, SignedUrlResponse
 
 __all__ = [
+	# Doctor Verification
+	"DoctorVerificationResponse",
+	"SignedUrlResponse",
 	# Auth
 	"GoogleAuthData",
 	"SignupRequest",

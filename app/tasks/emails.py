@@ -60,3 +60,28 @@ def send_contact_feedback_email_task(self, to_email: str, full_name: str, messag
 	except Exception as exc:
 		logger.warning("Contact feedback email task failed (retrying): %s", exc, exc_info=True)
 		raise self.retry(exc=exc) from exc
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=30)
+def send_verification_status_email_task(
+	self,
+	to_email: str,
+	first_name: str,
+	status: str,
+	rejection_reason: str | None = None,
+) -> None:
+	try:
+		send_email_sync(
+			EMAIL_TYPE.VERIFICATION_STATUS,
+			to_email,
+			{
+				"first_name": first_name,
+				"status": status,
+				"rejection_reason": rejection_reason,
+				"is_doctor": True,
+			},
+		)
+	except Exception as exc:
+		logger.warning("Verification status email task failed (retrying): %s", exc, exc_info=True)
+		raise self.retry(exc=exc) from exc
+

@@ -6,6 +6,7 @@ from app.api.v1.endpoints import (
 	chat,
 	contact,
 	doctors,
+	doctor_verification,
 	export,
 	guest_cases,
 	guest_session,
@@ -35,4 +36,5 @@ api_router.include_router(subscribe.router)
 api_router.include_router(export.router)
 api_router.include_router(users.router)
 api_router.include_router(doctors.router)
+api_router.include_router(doctor_verification.router)
 api_router.include_router(ws_chat.router)

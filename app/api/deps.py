@@ -28,6 +28,7 @@ from app.repositories.notification import NotificationRepository
 from app.repositories.otp import OtpRepository
 from app.repositories.password_reset import PasswordResetRepository
 from app.repositories.pipeline_audit_log import PipelineAuditLogRepository
+from app.repositories.doctor_verification import DoctorVerificationRepository
 from app.repositories.token_blocklist import TokenBlocklistRepository
 from app.repositories.user import UserRepository
 from app.repositories.waitlist import WaitlistRepository
@@ -112,6 +113,10 @@ def get_pipeline_audit_log_repo(session: DBSession) -> PipelineAuditLogRepositor
 	return PipelineAuditLogRepository(session)
 
 
+def get_doctor_verification_repo(session: DBSession) -> DoctorVerificationRepository:
+	return DoctorVerificationRepository(session)
+
+
 # Annotated shortcuts
 UserRepo = Annotated[UserRepository, Depends(get_user_repo)]
 OtpRepo = Annotated[OtpRepository, Depends(get_otp_repo)]
@@ -129,6 +134,7 @@ AuthSessionRepo = Annotated[AuthSessionRepository, Depends(get_auth_session_repo
 AuthSessionManagerDep = Annotated[AuthSessionManager, Depends(get_auth_session_manager)]
 GuestSessionManagerDep = Annotated[GuestSessionManager, Depends(get_guest_session_manager)]
 PipelineAuditLogRepo = Annotated[PipelineAuditLogRepository, Depends(get_pipeline_audit_log_repo)]
+DoctorVerificationRepo = Annotated[DoctorVerificationRepository, Depends(get_doctor_verification_repo)]
 
 
 # Auth guard
