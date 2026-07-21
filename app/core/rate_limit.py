@@ -126,4 +126,3 @@ async def record_otp_failure(email: str) -> None:
 async def clear_otp_failures(email: str) -> None:
 	redis = await get_redis()
 	await redis.delete(_otp_failure_key(email))
-

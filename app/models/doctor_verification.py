@@ -74,7 +74,9 @@ class DoctorVerificationDocument(Base):
 		nullable=False,
 		index=True,
 	)
-	document_type: Mapped[str] = mapped_column(String, nullable=False)  # 'medical_license', 'government_id', 'board_certification'
+	document_type: Mapped[str] = mapped_column(
+		String, nullable=False
+	)  # 'medical_license', 'government_id', 'board_certification'
 	file_path: Mapped[str] = mapped_column(String, nullable=False)  # R2 key or local private file path
 	storage_type: Mapped[str] = mapped_column(String, nullable=False, default="local")
 	filename: Mapped[str] = mapped_column(String, nullable=False)

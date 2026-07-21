@@ -37,14 +37,10 @@ ALLOWED_MIME_TYPES = frozenset({"application/pdf", "image/jpeg", "image/png"})
 
 async def _read_and_validate_file(file: UploadFile) -> bytes:
 	if file.content_type not in ALLOWED_MIME_TYPES:
-		raise BadRequestError(
-			f"Unsupported file type for {file.filename}. Accepted types: PDF, JPG, PNG."
-		)
+		raise BadRequestError(f"Unsupported file type for {file.filename}. Accepted types: PDF, JPG, PNG.")
 	contents = await file.read()
 	if len(contents) > MAX_FILE_SIZE:
-		raise BadRequestError(
-			f"File {file.filename} exceeds the maximum size limit of 10MB."
-		)
+		raise BadRequestError(f"File {file.filename} exceeds the maximum size limit of 10MB.")
 	return contents
 
 
@@ -60,7 +56,11 @@ async def _save_uploaded_documents(
 	try:
 		# 1. Medical License
 		ml_data = await _read_and_validate_file(medical_license)
-		ml_upload = await upload_private_file(ml_data, medical_license.filename or "medical_license", medical_license.content_type or "application/octet-stream")
+		ml_upload = await upload_private_file(
+			ml_data,
+			medical_license.filename or "medical_license",
+			medical_license.content_type or "application/octet-stream",
+		)
 		ml_doc = DoctorVerificationDocument(
 			verification_id=verification_id,
 			document_type="medical_license",
@@ -75,7 +75,11 @@ async def _save_uploaded_documents(
 
 		# 2. Government ID
 		gid_data = await _read_and_validate_file(government_id)
-		gid_upload = await upload_private_file(gid_data, government_id.filename or "government_id", government_id.content_type or "application/octet-stream")
+		gid_upload = await upload_private_file(
+			gid_data,
+			government_id.filename or "government_id",
+			government_id.content_type or "application/octet-stream",
+		)
 		gid_doc = DoctorVerificationDocument(
 			verification_id=verification_id,
 			document_type="government_id",
@@ -95,7 +99,9 @@ async def _save_uploaded_documents(
 				if not bc_file.filename:
 					continue
 				bc_data = await _read_and_validate_file(bc_file)
-				bc_upload = await upload_private_file(bc_data, bc_file.filename, bc_file.content_type or "application/octet-stream")
+				bc_upload = await upload_private_file(
+					bc_data, bc_file.filename, bc_file.content_type or "application/octet-stream"
+				)
 				bc_doc = DoctorVerificationDocument(
 					verification_id=verification_id,
 					document_type="board_certification",
@@ -365,9 +371,7 @@ async def update_verification_status(
 		except Exception:
 			logger.exception("Failed to dispatch status email notification for %s", target_user.email)
 
-	return SuccessResponse(
-		message=f"Verification status successfully updated to {target_status.value}."
-	)
+	return SuccessResponse(message=f"Verification status successfully updated to {target_status.value}.")
 
 
 @router.get("/documents/{documentId}", response_model=SuccessResponse[SignedUrlResponse])
@@ -385,9 +389,7 @@ async def get_document_signed_url(
 	if current_user.role != UserRole.ADMIN and doc.verification.user_id != current_user.id:
 		raise ForbiddenError("Unauthorized access to document.")
 
-	signed_url = generate_document_signed_url(
-		doc.file_path, str(doc.id), doc.storage_type, expires_in_seconds=600
-	)
+	signed_url = generate_document_signed_url(doc.file_path, str(doc.id), doc.storage_type, expires_in_seconds=600)
 	return SuccessResponse(
 		message="Signed URL generated successfully.",
 		data=SignedUrlResponse(signed_url=signed_url),
@@ -416,6 +418,7 @@ async def view_local_document(
 	# Wait, we need to access DB session, let's create a temporary connection or pass repo
 	# We can fetch inside DB session
 	from app.db.session import AsyncSessionLocal
+
 	async with AsyncSessionLocal() as session:
 		repo = DoctorVerificationRepository(session)
 		doc = await repo.get_document_by_id(documentId)

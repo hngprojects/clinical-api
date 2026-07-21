@@ -255,7 +255,9 @@ async def verify_otp(
 	if purpose_enum == OtpPurpose.RESET_PASSWORD:
 		settings = get_settings()
 		reset_repo = PasswordResetRepo(user_repo._session)
-		raw = await create_password_reset(reset_repo, user, expires_minutes=settings.PASSWORD_RESET_TOKEN_EXPIRES_MINUTES)
+		raw = await create_password_reset(
+			reset_repo, user, expires_minutes=settings.PASSWORD_RESET_TOKEN_EXPIRES_MINUTES
+		)
 		await user_repo.commit()
 		return SuccessResponse(
 			message="Reset token issued.",

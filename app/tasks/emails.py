@@ -84,4 +84,3 @@ def send_verification_status_email_task(
 	except Exception as exc:
 		logger.warning("Verification status email task failed (retrying): %s", exc, exc_info=True)
 		raise self.retry(exc=exc) from exc
-

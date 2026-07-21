@@ -13,7 +13,9 @@ logger = logging.getLogger(__name__)
 
 def _get_r2_client() -> Minio | None:
 	settings = get_settings()
-	if not all([settings.R2_ACCOUNT_ID, settings.R2_ACCESS_KEY_ID, settings.R2_SECRET_ACCESS_KEY, settings.R2_BUCKET_NAME]):
+	if not all(
+		[settings.R2_ACCOUNT_ID, settings.R2_ACCESS_KEY_ID, settings.R2_SECRET_ACCESS_KEY, settings.R2_BUCKET_NAME]
+	):
 		return None
 
 	endpoint = f"{settings.R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
@@ -44,6 +46,7 @@ async def upload_private_file(
 	client = _get_r2_client()
 	if client is not None:
 		from io import BytesIO
+
 		data_stream = BytesIO(data)
 		try:
 			client.put_object(

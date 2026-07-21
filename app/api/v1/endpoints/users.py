@@ -5,7 +5,15 @@ from fastapi import APIRouter, Cookie, Depends, File, Request, UploadFile, statu
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import select
 
-from app.api.deps import AuthSessionManagerDep, CurrentUser, DBSession, OtpRepo, TokenBlocklistRepo, UserRepo, bearer_scheme
+from app.api.deps import (
+	AuthSessionManagerDep,
+	CurrentUser,
+	DBSession,
+	OtpRepo,
+	TokenBlocklistRepo,
+	UserRepo,
+	bearer_scheme,
+)
 from app.core.config import get_settings
 from app.core.exceptions import BadRequestError
 from app.core.rate_limit import enforce_action_rate_limit
