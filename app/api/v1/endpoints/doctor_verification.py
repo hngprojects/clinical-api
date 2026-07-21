@@ -18,6 +18,7 @@ from app.models.doctor_verification import (
 	DoctorVerificationStatus,
 )
 from app.models.user import User, UserRole
+from app.repositories.doctor_verification import DoctorVerificationRepository
 from app.schemas.doctor_verification import DoctorVerificationResponse, SignedUrlResponse
 from app.services.private_storage import (
 	delete_private_file,
@@ -148,7 +149,6 @@ async def submit_verification(
 	except ValueError as exc:
 		raise BadRequestError("Invalid date format for license_expiry_date. Use ISO format (YYYY-MM-DD).") from exc
 
-	verification_id = UUID(int=0)  # temporary
 	verification = DoctorVerification(
 		user_id=current_user.id,
 		license_number=license_number.strip(),
@@ -413,14 +413,11 @@ async def view_local_document(
 	if payload.get("doc_id") != str(documentId):
 		raise ForbiddenError("Token document mismatch.")
 
-	# We bypass DB load if we just serve the file path, but fetching from DB ensures existence and correct MIME
-	# Wait, we need to access DB session, let's create a temporary connection or pass repo
-	# We can fetch inside DB session
 	from app.db.session import AsyncSessionLocal
 
 	async with AsyncSessionLocal() as session:
-		repo = DoctorVerificationRepository(session)
-		doc = await repo.get_document_by_id(documentId)
+		local_repo = DoctorVerificationRepository(session)
+		doc = await local_repo.get_document_by_id(documentId)
 		if not doc:
 			raise NotFoundError("Document not found.")
 		return FileResponse(doc.file_path, media_type=doc.mime_type, filename=doc.filename)
