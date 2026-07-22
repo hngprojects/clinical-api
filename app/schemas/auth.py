@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
@@ -74,7 +75,7 @@ class VerifyOtpRequest(BaseModel):
 	guest_session_id: str | None = None
 	device_id: str = Field(default="unknown", min_length=1, max_length=255)
 	platform: str | None = Field(default="web", max_length=32)
-	purpose: str = "email_verification"
+	purpose: Literal["email_verification", "reset_password"] = "email_verification"
 
 
 class ResendOtpRequest(BaseModel):
