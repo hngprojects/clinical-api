@@ -50,7 +50,7 @@ media_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/media", StaticFiles(directory=media_dir), name="media")
 
 private_media_dir = Path(settings.PRIVATE_MEDIA_DIR)
-private_media_dir.mkdir(parents=True, exist_ok=True)
+private_media_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
 
 # CORS
 app.add_middleware(
