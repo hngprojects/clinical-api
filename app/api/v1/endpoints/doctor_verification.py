@@ -393,7 +393,9 @@ async def get_document_signed_url(
 	if current_user.role != UserRole.ADMIN and doc.verification.user_id != current_user.id:
 		raise ForbiddenError("Unauthorized access to document.")
 
-	signed_url = await generate_document_signed_url(doc.file_path, str(doc.id), doc.storage_type, expires_in_seconds=600)
+	signed_url = await generate_document_signed_url(
+		doc.file_path, str(doc.id), doc.storage_type, expires_in_seconds=600
+	)
 	return SuccessResponse(
 		message="Signed URL generated successfully.",
 		data=SignedUrlResponse(signed_url=signed_url),

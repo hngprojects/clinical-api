@@ -148,9 +148,7 @@ async def delete_private_file(file_path_or_key: str, storage_type: str = "local"
 		client = _get_r2_client()
 		if client is not None:
 			try:
-				await anyio.to_thread.run_sync(
-					partial(client.remove_object, settings.R2_BUCKET_NAME, file_path_or_key)
-				)
+				await anyio.to_thread.run_sync(partial(client.remove_object, settings.R2_BUCKET_NAME, file_path_or_key))
 			except Exception as exc:
 				logger.warning("Failed to delete R2 object %s: %s", file_path_or_key, exc)
 	else:
