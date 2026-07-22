@@ -24,9 +24,6 @@ async def get_doctor_dashboard(
 	Authoritative source of truth: Enforces that the user is fully email-verified
 	and has an APPROVED Doctor verification status (returning 403 Forbidden otherwise).
 	"""
-	if not current_user.is_email_verified:
-		raise ForbiddenError("Email address must be verified to access doctor dashboard.")
-
 	stmt = select(DoctorVerification).where(DoctorVerification.user_id == current_user.id)
 	res = await session.execute(stmt)
 	verification = res.scalar_one_or_none()

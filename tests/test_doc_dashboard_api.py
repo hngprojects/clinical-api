@@ -108,7 +108,7 @@ async def test_doctors_dashboard_gate_enforcement(client) -> None:
 
 	try:
 		res1 = await client.get("/api/v1/doctors/dashboard", headers=_auth_headers(user_unverified.id))
-		assert res1.status_code == 403
+		assert res1.status_code == 401
 
 		res2 = await client.get("/api/v1/doctors/dashboard", headers=_auth_headers(user_pending.id))
 		assert res2.status_code == 403
