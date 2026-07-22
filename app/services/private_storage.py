@@ -1,8 +1,11 @@
 import logging
 from datetime import datetime, timedelta, timezone
+from functools import partial
+from io import BytesIO
 from pathlib import Path
 from uuid import uuid4
 
+import anyio
 import jwt
 from minio import Minio
 
@@ -46,16 +49,17 @@ async def upload_private_file(
 
 	client = _get_r2_client()
 	if client is not None:
-		from io import BytesIO
-
 		data_stream = BytesIO(data)
 		try:
-			client.put_object(
-				bucket_name=settings.R2_BUCKET_NAME,
-				object_name=key,
-				data=data_stream,
-				length=len(data),
-				content_type=content_type,
+			await anyio.to_thread.run_sync(
+				partial(
+					client.put_object,
+					settings.R2_BUCKET_NAME,
+					key,
+					data_stream,
+					len(data),
+					content_type=content_type,
+				)
 			)
 			return {
 				"filename": filename,
@@ -69,10 +73,10 @@ async def upload_private_file(
 			raise BadGatewayError("Failed to upload document to R2 storage.") from exc
 	else:
 		dest = Path(settings.PRIVATE_MEDIA_DIR) / subdir
-		dest.mkdir(parents=True, exist_ok=True)
+		dest.mkdir(mode=0o700, parents=True, exist_ok=True)
 		local_path = dest / file_name
 		try:
-			local_path.write_bytes(data)
+			await anyio.to_thread.run_sync(partial(local_path.write_bytes, data))
 			return {
 				"filename": filename,
 				"mime_type": content_type,
@@ -85,31 +89,45 @@ async def upload_private_file(
 			raise BadGatewayError("Failed to upload document to private storage.") from exc
 
 
-def generate_document_signed_url(
+async def generate_document_signed_url(
 	file_path_or_key: str,
 	document_id: str,
 	storage_type: str = "local",
 	expires_in_seconds: int = 600,
 ) -> str:
-	"""Generate a short-lived signed URL to read a private document."""
+	"""Generate a short-lived signed URL to read a private document.
+
+	For R2 documents a presigned S3 URL is returned directly. The URL is never
+	rewritten -- replacing the S3 host invalidates the HMAC signature. If R2
+	credentials are missing or presigning fails, a BadGatewayError is raised;
+	silently falling back to a local JWT URL for an R2 key would be unusable.
+
+	For locally stored documents a short-lived HS256 JWT pointing at the
+	/documents/{id}/view endpoint is returned.
+	"""
 	settings = get_settings()
 
 	if storage_type == "r2":
 		client = _get_r2_client()
-		if client is not None:
-			try:
-				url = client.presigned_get_object(
-					bucket_name=settings.R2_BUCKET_NAME,
-					object_name=file_path_or_key,
-					expires=timedelta(seconds=expires_in_seconds),
+		if client is None:
+			raise BadGatewayError(
+				"R2 credentials are not configured; cannot generate a presigned URL for a cloud-stored document."
+			)
+		try:
+			url: str = await anyio.to_thread.run_sync(
+				partial(
+					client.presigned_get_object,
+					settings.R2_BUCKET_NAME,
+					file_path_or_key,
+					timedelta(seconds=expires_in_seconds),
 				)
-				if settings.R2_CUSTOM_DOMAIN:
-					endpoint = f"{settings.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/{settings.R2_BUCKET_NAME}"
-					url = url.replace(endpoint, settings.R2_CUSTOM_DOMAIN)
-				return url
-			except Exception:
-				logger.exception("Failed to generate presigned R2 URL")
+			)
+			return url
+		except Exception as exc:
+			logger.exception("Failed to generate presigned R2 URL for document %s", document_id)
+			raise BadGatewayError("Failed to generate a presigned URL for the document.") from exc
 
+	# Local storage fallback -- JWT signed URL
 	payload = {
 		"doc_id": str(document_id),
 		"exp": datetime.now(timezone.utc) + timedelta(seconds=expires_in_seconds),
@@ -119,19 +137,25 @@ def generate_document_signed_url(
 	return f"{base_url.rstrip('/')}/api/v1/doctors/verification/documents/{document_id}/view?token={token}"
 
 
-def delete_private_file(file_path_or_key: str, storage_type: str = "local") -> None:
-	"""Clean up a file from private storage."""
+async def delete_private_file(file_path_or_key: str, storage_type: str = "local") -> None:
+	"""Clean up a file from private storage.
+
+	Blocking remove_object / unlink calls are offloaded to a thread-pool worker
+	so the event loop is not stalled.
+	"""
 	settings = get_settings()
 	if storage_type == "r2":
 		client = _get_r2_client()
 		if client is not None:
 			try:
-				client.remove_object(settings.R2_BUCKET_NAME, file_path_or_key)
+				await anyio.to_thread.run_sync(
+					partial(client.remove_object, settings.R2_BUCKET_NAME, file_path_or_key)
+				)
 			except Exception as exc:
 				logger.warning("Failed to delete R2 object %s: %s", file_path_or_key, exc)
 	else:
 		path = Path(file_path_or_key)
 		try:
-			path.unlink(missing_ok=True)
+			await anyio.to_thread.run_sync(partial(path.unlink, missing_ok=True))
 		except OSError as exc:
 			logger.warning("Failed to delete local private file %s: %s", path, exc)

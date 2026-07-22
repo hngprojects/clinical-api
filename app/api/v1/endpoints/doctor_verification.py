@@ -119,7 +119,7 @@ async def _save_uploaded_documents(
 	except Exception as exc:
 		# Cleanup already uploaded files in storage on failure
 		for doc in saved_docs:
-			delete_private_file(doc.file_path, doc.storage_type)
+			await delete_private_file(doc.file_path, doc.storage_type)
 		raise exc
 
 
@@ -274,7 +274,7 @@ async def resubmit_verification(
 	# Clean up old files from storage and database
 	old_docs = list(verification.documents)
 	for doc in old_docs:
-		delete_private_file(doc.file_path, doc.storage_type)
+		await delete_private_file(doc.file_path, doc.storage_type)
 		await repo.delete_document(doc)
 	await repo.flush()
 
@@ -393,7 +393,7 @@ async def get_document_signed_url(
 	if current_user.role != UserRole.ADMIN and doc.verification.user_id != current_user.id:
 		raise ForbiddenError("Unauthorized access to document.")
 
-	signed_url = generate_document_signed_url(doc.file_path, str(doc.id), doc.storage_type, expires_in_seconds=600)
+	signed_url = await generate_document_signed_url(doc.file_path, str(doc.id), doc.storage_type, expires_in_seconds=600)
 	return SuccessResponse(
 		message="Signed URL generated successfully.",
 		data=SignedUrlResponse(signed_url=signed_url),
