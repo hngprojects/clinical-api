@@ -142,6 +142,8 @@ async def submit_verification(
 	if existing:
 		if existing.status in (DoctorVerificationStatus.PENDING, DoctorVerificationStatus.APPROVED):
 			raise ConflictError("A verification request is already pending or approved.")
+		if existing.status == DoctorVerificationStatus.REJECTED:
+			raise ConflictError("A rejected verification exists; use the resubmit endpoint instead.")
 
 	# Validate dates
 	try:
