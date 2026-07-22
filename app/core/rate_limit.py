@@ -119,7 +119,7 @@ async def record_otp_failure(email: str) -> None:
 	count = await redis.incr(key)
 	if count == 1:
 		await redis.expire(key, settings.OTP_FAILURE_RATE_WINDOW_SECONDS)
-	if count >= settings.OTP_FAILURE_RATE_LIMIT:
+	if count > settings.OTP_FAILURE_RATE_LIMIT:
 		raise RateLimitExceeded("Too many OTP verification attempts. Try again later.")
 
 
