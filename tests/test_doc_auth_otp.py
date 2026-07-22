@@ -101,7 +101,7 @@ async def test_otp_lockout_after_max_failures(client) -> None:
 				"/api/v1/auth/verify-otp",
 				json={"email": email, "code": "654321", "device_id": "test-device"},
 			)
-			assert response.status_code in (400, 429)
+			assert response.status_code == 400
 
 		# Next attempt should be locked out with 429
 		response = await client.post(
