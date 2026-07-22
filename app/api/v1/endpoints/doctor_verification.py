@@ -18,7 +18,6 @@ from app.models.doctor_verification import (
 	DoctorVerificationStatus,
 )
 from app.models.user import User, UserRole
-from app.repositories.doctor_verification import DoctorVerificationRepository
 from app.schemas.doctor_verification import DoctorVerificationResponse, SignedUrlResponse
 from app.services.private_storage import (
 	delete_private_file,
@@ -404,6 +403,7 @@ async def get_document_signed_url(
 @router.get("/documents/{documentId}/view")
 async def view_local_document(
 	documentId: UUID,
+	repo: DoctorVerificationRepo,
 	token: str = Query(...),
 ) -> FileResponse:
 	"""View endpoint for local storage fallback that validates signature token."""
@@ -419,11 +419,11 @@ async def view_local_document(
 	if payload.get("doc_id") != str(documentId):
 		raise ForbiddenError("Token document mismatch.")
 
-	from app.db.session import AsyncSessionLocal
+	doc = await repo.get_document_by_id(documentId)
+	if not doc:
+		raise NotFoundError("Document not found.")
 
-	async with AsyncSessionLocal() as session:
-		local_repo = DoctorVerificationRepository(session)
-		doc = await local_repo.get_document_by_id(documentId)
-		if not doc:
-			raise NotFoundError("Document not found.")
-		return FileResponse(doc.file_path, media_type=doc.mime_type, filename=doc.filename)
+	if doc.storage_type != "local":
+		raise BadRequestError("Document is stored on remote cloud storage.")
+
+	return FileResponse(doc.file_path, media_type=doc.mime_type, filename=doc.filename)
