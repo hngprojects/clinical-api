@@ -307,7 +307,8 @@ async def resend(
 	settings = get_settings()
 
 	# Log the attempt (never log OTP value)
-	logger.info("OTP resend request: email=%s", _mask_email(payload.email))
+	normalized_email = payload.email.strip().lower()
+	logger.info("OTP resend request: email=%s", _mask_email(normalized_email))
 
 	await enforce_action_rate_limit(
 		key=f"rl:resend-otp:{ip_hash}",
@@ -318,19 +319,19 @@ async def resend(
 
 	# Rate limit resend per email
 	await enforce_action_rate_limit(
-		key=f"rl:resend-otp:{payload.email.strip().lower()}",
+		key=f"rl:resend-otp:{normalized_email}",
 		limit=settings.RESEND_OTP_RATE_LIMIT,
 		window_seconds=settings.RESEND_OTP_RATE_WINDOW_SECONDS,
 		message="Too many OTP resend requests. Try again later.",
 	)
 
-	user = await user_repo.get_by_email(payload.email.strip().lower())
+	user = await user_repo.get_by_email(normalized_email)
 	if not user or not user.is_active:
 		# Return the same success response to prevent account enumeration
 		return SuccessResponse(
 			message="A new code has been sent to your email.",
 			data=OtpDispatchResponse(
-				email=payload.email,
+				email=normalized_email,
 				expires_in_seconds=otp_ttl_seconds(),
 			),
 		)
@@ -351,7 +352,7 @@ async def resend(
 		return SuccessResponse(
 			message="A new code has been sent to your email.",
 			data=OtpDispatchResponse(
-				email=user.email,
+				email=normalized_email,
 				expires_in_seconds=otp_ttl_seconds(),
 			),
 		)
@@ -378,7 +379,7 @@ async def resend(
 			else "A new code was created. If you do not receive an email, request another code."
 		),
 		data=OtpDispatchResponse(
-			email=user.email,
+			email=normalized_email,
 			expires_in_seconds=otp_ttl_seconds(),
 		),
 	)
