@@ -115,11 +115,29 @@ async def test_otp_lockout_after_max_failures(client) -> None:
 
 
 async def test_resend_otp_prevents_account_enumeration(client) -> None:
-	non_existent_email = f"nonexistent_{uuid.uuid4().hex[:8]}@clinsights.dev"
-	response = await client.post(
+	# 1. Non-existent mixed-case email
+	non_existent_email = f"NonExistent_{uuid.uuid4().hex[:8]}@CLINSIGHTS.dev"
+	response1 = await client.post(
 		"/api/v1/auth/resend-otp",
 		json={"email": non_existent_email},
 	)
-	assert response.status_code == 200
-	assert response.json()["message"] == "A new code has been sent to your email."
-	assert response.json()["data"]["email"] == non_existent_email
+	assert response1.status_code == 200
+	assert response1.json()["message"] == "A new code has been sent to your email."
+	assert response1.json()["data"]["email"] == non_existent_email.strip().lower()
+
+	# 2. Existing user with mixed-case email resend
+	user = await _create_user(
+		email=f"registered_{uuid.uuid4().hex[:8]}@clinsights.dev",
+		password="Password123!",
+		verified=False,
+	)
+	try:
+		response2 = await client.post(
+			"/api/v1/auth/resend-otp",
+			json={"email": user.email.upper()},
+		)
+		assert response2.status_code == 200
+		assert response2.json()["data"]["email"] == user.email.strip().lower()
+	finally:
+		await _delete_user(user.id)
+
