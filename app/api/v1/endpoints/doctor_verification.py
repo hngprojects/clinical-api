@@ -325,7 +325,11 @@ async def update_verification_status(
 	if verification.status != DoctorVerificationStatus.PENDING:
 		raise BadRequestError("Only pending verification requests can be approved or rejected.")
 
-	target_status = DoctorVerificationStatus(status_update.lower())
+	try:
+		target_status = DoctorVerificationStatus(status_update.lower())
+	except ValueError as exc:
+		raise BadRequestError("Status update must be either 'approved' or 'rejected'.") from exc
+
 	if target_status not in (DoctorVerificationStatus.APPROVED, DoctorVerificationStatus.REJECTED):
 		raise BadRequestError("Status update must be either 'approved' or 'rejected'.")
 
