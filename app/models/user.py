@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, Enum, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Enum, Index, String, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -37,8 +37,14 @@ class User(Base):
 	google_id: Mapped[str | None] = mapped_column(String, nullable=True)
 
 	__table_args__ = (
-		UniqueConstraint("email", "role", name="uq_users_email_role"),
-		UniqueConstraint("google_id", "role", name="uq_users_google_id_role", postgresql_nulls_not_distinct=False),
+		Index("ix_users_email_role", "email", "role", unique=True),
+		Index(
+			"ix_users_google_id_role",
+			"google_id",
+			"role",
+			unique=True,
+			postgresql_where=text("google_id IS NOT NULL"),
+		),
 	)
 	first_name: Mapped[str] = mapped_column(String, nullable=False)
 	last_name: Mapped[str] = mapped_column(String, nullable=False)
