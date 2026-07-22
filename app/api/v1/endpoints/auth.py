@@ -242,9 +242,9 @@ async def verify_otp(
 			code=payload.code,
 		)
 	except OtpVerificationError as exc:
+		await user_repo.commit()
 		await record_verify_otp_failure(ip_hash)
 		await record_otp_failure(payload.email)
-		await user_repo.commit()
 		raise BadRequestError(str(exc))
 
 	# Clear failures upon successful verification
