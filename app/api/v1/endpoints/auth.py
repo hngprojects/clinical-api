@@ -217,7 +217,7 @@ async def verify_otp(
 	await assert_otp_not_locked(payload.email)
 
 	# Log the attempt (never log OTP value)
-	logger.info("OTP verification attempt: email=%s, purpose=%s", payload.email, payload.purpose)
+	logger.info("OTP verification attempt: email=%s, purpose=%s", _mask_email(payload.email), payload.purpose)
 
 	await enforce_action_rate_limit(
 		key=f"rl:verify-otp:{ip_hash}",
@@ -307,7 +307,7 @@ async def resend(
 	settings = get_settings()
 
 	# Log the attempt (never log OTP value)
-	logger.info("OTP resend request: email=%s", payload.email)
+	logger.info("OTP resend request: email=%s", _mask_email(payload.email))
 
 	await enforce_action_rate_limit(
 		key=f"rl:resend-otp:{ip_hash}",
