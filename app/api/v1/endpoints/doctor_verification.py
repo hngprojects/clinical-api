@@ -163,9 +163,7 @@ async def submit_verification(
 
 	# Save documents — each doc is registered via repo.add_document() inside the helper
 	# and will be loaded onto verification after repo.refresh() via the selectin relationship.
-	await _save_uploaded_documents(
-		verification.id, repo, medical_license, government_id, board_certifications
-	)
+	await _save_uploaded_documents(verification.id, repo, medical_license, government_id, board_certifications)
 
 	# Create Audit Log
 	audit = DoctorVerificationAuditLog(
