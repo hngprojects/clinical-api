@@ -30,6 +30,7 @@ async def signup_user(
 	user_repo: UserRepository,
 	otp_repo: OtpRepository,
 	payload: SignupRequest,
+	role: UserRole = UserRole.PATIENT,
 ) -> tuple[User, str]:
 	"""Create an unverified user (with hashed password) and return an email-verification OTP.
 
@@ -54,7 +55,7 @@ async def signup_user(
 				first_name=payload.first_name.strip(),
 				last_name=payload.last_name.strip(),
 				password_hash=hash_password(payload.password),
-				role=UserRole.PATIENT,
+				role=role,
 				is_email_verified=False,
 				is_active=True,
 			)
@@ -81,12 +82,13 @@ async def authenticate_credentials(
 	*,
 	email: str,
 	password: str,
+	expected_role: UserRole | None = None,
 ) -> User:
 	"""Verify email + password and return the authenticated user.
 
 	Raises:
 		NotFoundError: if the email is not registered.
-		ForbiddenError: if the account is inactive or email is unverified.
+		ForbiddenError: if the account is inactive, unverified, or does not match the expected role.
 		UnauthorizedError: if the password is wrong.
 	"""
 	user = await user_repo.get_by_email(email)
@@ -94,6 +96,8 @@ async def authenticate_credentials(
 		raise NotFoundError("Login failed. Check your credentials and try again.")
 	if not user.is_active:
 		raise ForbiddenError("This account is disabled.")
+	if expected_role is not None and user.role != expected_role:
+		raise ForbiddenError("This account does not have access to this endpoint.")
 	if not user.is_email_verified:
 		raise ForbiddenError("Email not verified. Check your inbox for the verification code we sent during signup.")
 	if not user.password_hash or not verify_password(password, user.password_hash):
@@ -112,6 +116,7 @@ async def authenticate_otp(
 	*,
 	email: str,
 	code: str,
+	expected_role: UserRole | None = None,
 ) -> User:
 	"""Verify an email-verification OTP and return the user.
 
@@ -122,6 +127,8 @@ async def authenticate_otp(
 		raise UnauthorizedError("Invalid code.")
 	if not user.is_active:
 		raise ForbiddenError("This account is disabled.")
+	if expected_role is not None and user.role != expected_role:
+		raise ForbiddenError("This account does not have access to this endpoint.")
 
 	try:
 		await verify_otp_for_user(otp_repo, user_id=user.id, purpose=OtpPurpose.EMAIL_VERIFICATION, code=code)
@@ -143,6 +150,7 @@ async def resend_otp(
 	otp_repo: OtpRepository,
 	*,
 	email: str,
+	expected_role: UserRole | None = None,
 ) -> tuple[User, str]:
 	"""Re-issue an email-verification OTP and return the code."""
 	user = await user_repo.get_by_email(email)
@@ -150,6 +158,8 @@ async def resend_otp(
 		raise NotFoundError("No account found for this email.")
 	if not user.is_active:
 		raise ForbiddenError("This account is disabled.")
+	if expected_role is not None and user.role != expected_role:
+		raise ForbiddenError("This account does not have access to this endpoint.")
 	if user.is_email_verified:
 		raise ConflictError("Email is already verified. Use login instead.")
 

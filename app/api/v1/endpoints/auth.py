@@ -35,6 +35,7 @@ from app.core.rate_limit import (
 from app.core.responses import SuccessResponse
 from app.core.security import hash_opaque_token
 from app.models.otp import OtpPurpose
+from app.models.user import UserRole
 from app.schemas.auth import (
 	AuthSessionResponse,
 	ForgotPasswordRequest,
@@ -173,7 +174,9 @@ async def login(
 	"""
 	await assert_login_not_rate_limited(ip_hash)
 	try:
-		user = await authenticate_credentials(user_repo, email=payload.email, password=payload.password)
+		user = await authenticate_credentials(
+			user_repo, email=payload.email, password=payload.password, expected_role=UserRole.PATIENT
+		)
 	except (UnauthorizedError, NotFoundError, ForbiddenError):
 		await record_login_failure(ip_hash)
 		raise
