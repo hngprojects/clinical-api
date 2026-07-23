@@ -79,7 +79,7 @@ async def get_or_create_google_user(
 		return user
 
 	# Check for email collision
-	existing = await user_repo.get_by_email(email)
+	existing = await user_repo.get_by_email_and_role(email, UserRole.PATIENT)
 	if existing:
 		raise ConflictError("An account with this email already exists. Please log in instead.")
 

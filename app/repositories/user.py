@@ -15,16 +15,14 @@ class UserRepository:
 	async def get_by_id(self, user_id: UUID) -> User | None:
 		return await self._session.get(User, user_id)
 
-	async def get_by_email(self, email: str, *, role: UserRole | None = None) -> User | None:
+	async def get_by_email(self, email: str, role: UserRole) -> User | None:
 		normalized = email.strip().lower()
-		stmt = select(User).where(User.email == normalized)
-		if role is not None:
-			stmt = stmt.where(User.role == role)
+		stmt = select(User).where(User.email == normalized, User.role == role)
 		result = await self._session.execute(stmt)
 		return result.scalar_one_or_none()
 
 	async def get_by_email_and_role(self, email: str, role: UserRole) -> User | None:
-		return await self.get_by_email(email, role=role)
+		return await self.get_by_email(email, role)
 
 	async def count_by_email(self, email: str, *, exclude_user_id: UUID | None = None) -> int:
 		normalized = email.strip().lower()
@@ -34,15 +32,13 @@ class UserRepository:
 		result = await self._session.execute(stmt)
 		return len(result.scalars().all())
 
-	async def get_by_google_id(self, google_id: str, *, role: UserRole | None = None) -> User | None:
-		stmt = select(User).where(User.google_id == google_id)
-		if role is not None:
-			stmt = stmt.where(User.role == role)
+	async def get_by_google_id(self, google_id: str, role: UserRole) -> User | None:
+		stmt = select(User).where(User.google_id == google_id, User.role == role)
 		result = await self._session.execute(stmt)
 		return result.scalar_one_or_none()
 
 	async def get_by_google_id_and_role(self, google_id: str, role: UserRole) -> User | None:
-		return await self.get_by_google_id(google_id, role=role)
+		return await self.get_by_google_id(google_id, role)
 
 	def add(self, user: User) -> None:
 		self._session.add(user)

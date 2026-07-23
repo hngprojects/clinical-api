@@ -91,11 +91,7 @@ async def authenticate_credentials(
 		ForbiddenError: if the account is inactive, unverified, or does not match the expected role.
 		UnauthorizedError: if the password is wrong.
 	"""
-	user = (
-		await user_repo.get_by_email_and_role(email, expected_role)
-		if expected_role
-		else await user_repo.get_by_email(email)
-	)
+	user = await user_repo.get_by_email_and_role(email, expected_role)
 	if user is None:
 		raise NotFoundError("Login failed. Check your credentials and try again.")
 	if not user.is_active:
@@ -126,11 +122,7 @@ async def authenticate_otp(
 
 	Flips `is_email_verified=True` on success.
 	"""
-	user = (
-		await user_repo.get_by_email_and_role(email, expected_role)
-		if expected_role
-		else await user_repo.get_by_email(email)
-	)
+	user = await user_repo.get_by_email_and_role(email, expected_role)
 	if user is None:
 		raise UnauthorizedError("Invalid code.")
 	if not user.is_active:
@@ -161,11 +153,7 @@ async def resend_otp(
 	expected_role: UserRole | None = None,
 ) -> tuple[User, str]:
 	"""Re-issue an email-verification OTP and return the code."""
-	user = (
-		await user_repo.get_by_email_and_role(email, expected_role)
-		if expected_role
-		else await user_repo.get_by_email(email)
-	)
+	user = await user_repo.get_by_email_and_role(email, expected_role)
 	if user is None:
 		raise NotFoundError("No account found for this email.")
 	if not user.is_active:

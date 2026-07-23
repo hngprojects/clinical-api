@@ -227,6 +227,7 @@ async def verify_otp(
 			otp_repo,
 			email=payload.email,
 			code=payload.code,
+			expected_role=UserRole.PATIENT,
 		)
 	except (ForbiddenError, UnauthorizedError):
 		await record_verify_otp_failure(ip_hash)
@@ -275,7 +276,7 @@ async def resend(
 		message="Too many OTP resend requests. Try again later.",
 	)
 
-	user, code = await resend_otp(user_repo, otp_repo, email=payload.email)
+	user, code = await resend_otp(user_repo, otp_repo, email=payload.email, expected_role=UserRole.PATIENT)
 	email_dispatched = False
 	try:
 		send_otp_email_task.delay(
@@ -337,7 +338,7 @@ async def forgot_password(
 		message="Too many password reset requests. Try again later.",
 	)
 
-	user = await user_repo.get_by_email(payload.email.strip().lower())
+	user = await user_repo.get_by_email(payload.email.strip().lower(), UserRole.PATIENT)
 	if user:
 		_, code = await create_otp_for_user(otp_repo, user_id=user.id, purpose=OtpPurpose.RESET_PASSWORD)
 		await session.commit()
@@ -357,7 +358,7 @@ async def verify_reset_otp(
 	session: DBSession,
 ) -> SuccessResponse[ResetTokenResponse]:
 	"""Verify a password-reset OTP and issue an opaque reset token for final password change."""
-	user = await user_repo.get_by_email(request.email.strip().lower())
+	user = await user_repo.get_by_email(request.email.strip().lower(), UserRole.PATIENT)
 	if not user:
 		raise UnauthorizedError("Invalid or expired reset OTP")
 
