@@ -165,7 +165,8 @@ async def submit_verification(
 	saved_docs = await _save_uploaded_documents(
 		verification.id, repo, medical_license, government_id, board_certifications
 	)
-	verification.documents = saved_docs
+	# Documents were added via repo.add_document() inside _save_uploaded_documents
+	# and will be populated on verification after repo.refresh() below.
 
 	# Create Audit Log
 	audit = DoctorVerificationAuditLog(
