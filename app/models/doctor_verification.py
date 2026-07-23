@@ -57,10 +57,10 @@ class DoctorVerification(Base):
 
 	user: Mapped["User"] = relationship(back_populates="doctor_verification")
 	documents: Mapped[list["DoctorVerificationDocument"]] = relationship(
-		back_populates="verification", cascade="all, delete-orphan"
+		back_populates="verification", cascade="all, delete-orphan", lazy="selectin"
 	)
 	audit_logs: Mapped[list["DoctorVerificationAuditLog"]] = relationship(
-		back_populates="verification", cascade="all, delete-orphan"
+		back_populates="verification", cascade="all, delete-orphan", lazy="selectin"
 	)
 
 
