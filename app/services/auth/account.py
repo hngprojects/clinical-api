@@ -39,7 +39,7 @@ async def signup_user(
 	- and is NOT verified → reuses the row, refreshes the password, and re-sends OTP.
 	"""
 	email = payload.email.strip().lower()
-	existing = await user_repo.get_by_email(email)
+	existing = await user_repo.get_by_email_and_role(email, role)
 
 	if existing is not None:
 		if existing.is_email_verified:
@@ -63,7 +63,7 @@ async def signup_user(
 			await user_repo.flush()
 		except IntegrityError:
 			await user_repo.rollback()
-			user = await user_repo.get_by_email(email)
+			user = await user_repo.get_by_email_and_role(email, role)
 			if user is None or user.is_email_verified:
 				raise ConflictError("An account with this email already exists. Please log in instead.")
 			user.password_hash = hash_password(payload.password)
@@ -91,7 +91,11 @@ async def authenticate_credentials(
 		ForbiddenError: if the account is inactive, unverified, or does not match the expected role.
 		UnauthorizedError: if the password is wrong.
 	"""
-	user = await user_repo.get_by_email(email)
+	user = (
+		await user_repo.get_by_email_and_role(email, expected_role)
+		if expected_role
+		else await user_repo.get_by_email(email)
+	)
 	if user is None:
 		raise NotFoundError("Login failed. Check your credentials and try again.")
 	if not user.is_active:
@@ -122,7 +126,11 @@ async def authenticate_otp(
 
 	Flips `is_email_verified=True` on success.
 	"""
-	user = await user_repo.get_by_email(email)
+	user = (
+		await user_repo.get_by_email_and_role(email, expected_role)
+		if expected_role
+		else await user_repo.get_by_email(email)
+	)
 	if user is None:
 		raise UnauthorizedError("Invalid code.")
 	if not user.is_active:
@@ -153,7 +161,11 @@ async def resend_otp(
 	expected_role: UserRole | None = None,
 ) -> tuple[User, str]:
 	"""Re-issue an email-verification OTP and return the code."""
-	user = await user_repo.get_by_email(email)
+	user = (
+		await user_repo.get_by_email_and_role(email, expected_role)
+		if expected_role
+		else await user_repo.get_by_email(email)
+	)
 	if user is None:
 		raise NotFoundError("No account found for this email.")
 	if not user.is_active:

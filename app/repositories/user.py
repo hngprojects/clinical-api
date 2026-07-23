@@ -3,7 +3,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.user import User
+from app.models.user import User, UserRole
 
 
 class UserRepository:
@@ -15,14 +15,26 @@ class UserRepository:
 	async def get_by_id(self, user_id: UUID) -> User | None:
 		return await self._session.get(User, user_id)
 
-	async def get_by_email(self, email: str) -> User | None:
+	async def get_by_email(self, email: str, *, role: UserRole | None = None) -> User | None:
 		normalized = email.strip().lower()
-		result = await self._session.execute(select(User).where(User.email == normalized))
+		stmt = select(User).where(User.email == normalized)
+		if role is not None:
+			stmt = stmt.where(User.role == role)
+		result = await self._session.execute(stmt)
 		return result.scalar_one_or_none()
 
-	async def get_by_google_id(self, google_id: str) -> User | None:
-		result = await self._session.execute(select(User).where(User.google_id == google_id))
+	async def get_by_email_and_role(self, email: str, role: UserRole) -> User | None:
+		return await self.get_by_email(email, role=role)
+
+	async def get_by_google_id(self, google_id: str, *, role: UserRole | None = None) -> User | None:
+		stmt = select(User).where(User.google_id == google_id)
+		if role is not None:
+			stmt = stmt.where(User.role == role)
+		result = await self._session.execute(stmt)
 		return result.scalar_one_or_none()
+
+	async def get_by_google_id_and_role(self, google_id: str, role: UserRole) -> User | None:
+		return await self.get_by_google_id(google_id, role=role)
 
 	def add(self, user: User) -> None:
 		self._session.add(user)
