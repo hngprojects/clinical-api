@@ -30,6 +30,7 @@ async def signup_user(
 	user_repo: UserRepository,
 	otp_repo: OtpRepository,
 	payload: SignupRequest,
+	role: UserRole = UserRole.PATIENT,
 ) -> tuple[User, str]:
 	"""Create an unverified user (with hashed password) and return an email-verification OTP.
 
@@ -38,7 +39,7 @@ async def signup_user(
 	- and is NOT verified → reuses the row, refreshes the password, and re-sends OTP.
 	"""
 	email = payload.email.strip().lower()
-	existing = await user_repo.get_by_email(email)
+	existing = await user_repo.get_by_email_and_role(email, role)
 
 	if existing is not None:
 		if existing.is_email_verified:
@@ -54,7 +55,7 @@ async def signup_user(
 				first_name=payload.first_name.strip(),
 				last_name=payload.last_name.strip(),
 				password_hash=hash_password(payload.password),
-				role=UserRole.PATIENT,
+				role=role,
 				is_email_verified=False,
 				is_active=True,
 			)
@@ -62,7 +63,7 @@ async def signup_user(
 			await user_repo.flush()
 		except IntegrityError:
 			await user_repo.rollback()
-			user = await user_repo.get_by_email(email)
+			user = await user_repo.get_by_email_and_role(email, role)
 			if user is None or user.is_email_verified:
 				raise ConflictError("An account with this email already exists. Please log in instead.")
 			user.password_hash = hash_password(payload.password)
@@ -81,19 +82,22 @@ async def authenticate_credentials(
 	*,
 	email: str,
 	password: str,
+	expected_role: UserRole | None = None,
 ) -> User:
 	"""Verify email + password and return the authenticated user.
 
 	Raises:
 		NotFoundError: if the email is not registered.
-		ForbiddenError: if the account is inactive or email is unverified.
+		ForbiddenError: if the account is inactive, unverified, or does not match the expected role.
 		UnauthorizedError: if the password is wrong.
 	"""
-	user = await user_repo.get_by_email(email)
+	user = await user_repo.get_by_email_and_role(email, expected_role)
 	if user is None:
 		raise NotFoundError("Login failed. Check your credentials and try again.")
 	if not user.is_active:
 		raise ForbiddenError("This account is disabled.")
+	if expected_role is not None and user.role != expected_role:
+		raise ForbiddenError("This account does not have access to this endpoint.")
 	if not user.is_email_verified:
 		raise ForbiddenError("Email not verified. Check your inbox for the verification code we sent during signup.")
 	if not user.password_hash or not verify_password(password, user.password_hash):
@@ -112,16 +116,19 @@ async def authenticate_otp(
 	*,
 	email: str,
 	code: str,
+	expected_role: UserRole | None = None,
 ) -> User:
 	"""Verify an email-verification OTP and return the user.
 
 	Flips `is_email_verified=True` on success.
 	"""
-	user = await user_repo.get_by_email(email)
+	user = await user_repo.get_by_email_and_role(email, expected_role)
 	if user is None:
 		raise UnauthorizedError("Invalid code.")
 	if not user.is_active:
 		raise ForbiddenError("This account is disabled.")
+	if expected_role is not None and user.role != expected_role:
+		raise ForbiddenError("This account does not have access to this endpoint.")
 
 	try:
 		await verify_otp_for_user(otp_repo, user_id=user.id, purpose=OtpPurpose.EMAIL_VERIFICATION, code=code)
@@ -143,13 +150,16 @@ async def resend_otp(
 	otp_repo: OtpRepository,
 	*,
 	email: str,
+	expected_role: UserRole | None = None,
 ) -> tuple[User, str]:
 	"""Re-issue an email-verification OTP and return the code."""
-	user = await user_repo.get_by_email(email)
+	user = await user_repo.get_by_email_and_role(email, expected_role)
 	if user is None:
 		raise NotFoundError("No account found for this email.")
 	if not user.is_active:
 		raise ForbiddenError("This account is disabled.")
+	if expected_role is not None and user.role != expected_role:
+		raise ForbiddenError("This account does not have access to this endpoint.")
 	if user.is_email_verified:
 		raise ConflictError("Email is already verified. Use login instead.")
 
@@ -173,8 +183,7 @@ async def start_email_change(
 		raise BadRequestError("Incorrect password")
 
 	normalized_email = new_email.strip().lower()
-	existing = await user_repo.get_by_email(normalized_email)
-	if existing is not None and existing.id != user.id:
+	if await user_repo.count_by_email(normalized_email, exclude_user_id=user.id):
 		raise ConflictError("This email is already linked to another account.")
 
 	_, code = await create_otp_for_user(otp_repo, user_id=user.id, purpose=OtpPurpose.EMAIL_VERIFICATION)

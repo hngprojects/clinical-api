@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, Enum, String
+from sqlalchemy import Boolean, DateTime, Enum, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -22,6 +22,7 @@ class UserRole(str, enum.Enum):
 	"""Role of the user in the system."""
 
 	PATIENT = "patient"
+	DOCTOR = "doctor"
 	ADMIN = "admin"
 	DOCTOR = "doctor"
 
@@ -30,11 +31,16 @@ class User(Base):
 	__tablename__ = "users"
 
 	id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-	email: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+	email: Mapped[str] = mapped_column(String, nullable=False, index=True)
 	pending_email: Mapped[str | None] = mapped_column(String, nullable=True)
 	email_change_token: Mapped[str | None] = mapped_column(String, nullable=True)
 	password_hash: Mapped[str | None] = mapped_column(String, nullable=True)
-	google_id: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
+	google_id: Mapped[str | None] = mapped_column(String, nullable=True)
+
+	__table_args__ = (
+		UniqueConstraint("email", "role", name="uq_users_email_role"),
+		UniqueConstraint("google_id", "role", name="uq_users_google_id_role", postgresql_nulls_not_distinct=False),
+	)
 	first_name: Mapped[str] = mapped_column(String, nullable=False)
 	last_name: Mapped[str] = mapped_column(String, nullable=False)
 	role: Mapped[UserRole] = mapped_column(

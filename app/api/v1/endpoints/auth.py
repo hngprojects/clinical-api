@@ -38,6 +38,7 @@ from app.core.rate_limit import (
 from app.core.responses import SuccessResponse
 from app.core.security import hash_opaque_token
 from app.models.otp import OtpPurpose
+from app.models.user import UserRole
 from app.schemas.auth import (
 	AuthSessionResponse,
 	ForgotPasswordRequest,
@@ -174,7 +175,9 @@ async def login(
 	"""
 	await assert_login_not_rate_limited(ip_hash)
 	try:
-		user = await authenticate_credentials(user_repo, email=payload.email, password=payload.password)
+		user = await authenticate_credentials(
+			user_repo, email=payload.email, password=payload.password, expected_role=UserRole.PATIENT
+		)
 	except (UnauthorizedError, NotFoundError, ForbiddenError):
 		await record_login_failure(ip_hash)
 		raise
@@ -226,7 +229,7 @@ async def verify_otp(
 		message="Too many OTP verification attempts. Try again later.",
 	)
 
-	user = await user_repo.get_by_email(payload.email.strip().lower())
+	user = await user_repo.get_by_email(payload.email.strip().lower(), role=payload.role)
 	if user is None:
 		await record_verify_otp_failure(ip_hash)
 		await record_otp_failure(payload.email)
@@ -325,7 +328,7 @@ async def resend(
 		message="Too many OTP resend requests. Try again later.",
 	)
 
-	user = await user_repo.get_by_email(normalized_email)
+	user = await user_repo.get_by_email(normalized_email, role=payload.role)
 	if not user or not user.is_active:
 		# Return the same success response to prevent account enumeration
 		return SuccessResponse(
@@ -422,7 +425,7 @@ async def forgot_password(
 		message="Too many password reset requests. Try again later.",
 	)
 
-	user = await user_repo.get_by_email(payload.email.strip().lower())
+	user = await user_repo.get_by_email(payload.email.strip().lower(), payload.role)
 	if user:
 		_, code = await create_otp_for_user(otp_repo, user_id=user.id, purpose=OtpPurpose.RESET_PASSWORD)
 		await session.commit()
@@ -442,7 +445,7 @@ async def verify_reset_otp(
 	session: DBSession,
 ) -> SuccessResponse[ResetTokenResponse]:
 	"""Verify a password-reset OTP and issue an opaque reset token for final password change."""
-	user = await user_repo.get_by_email(request.email.strip().lower())
+	user = await user_repo.get_by_email(request.email.strip().lower(), request.role)
 	if not user:
 		raise UnauthorizedError("Invalid or expired reset OTP")
 
