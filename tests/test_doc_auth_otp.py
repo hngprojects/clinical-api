@@ -126,11 +126,7 @@ async def test_resend_otp_prevents_account_enumeration(client) -> None:
 	assert response1.json()["data"]["email"] == non_existent_email.strip().lower()
 
 	# 2. Existing user with mixed-case email resend
-	user = await _create_user(
-		email=f"registered_{uuid.uuid4().hex[:8]}@clinsights.dev",
-		password="Password123!",
-		verified=False,
-	)
+	user = await _create_unverified_user(f"registered_{uuid.uuid4().hex[:8]}@clinsights.dev")
 	try:
 		response2 = await client.post(
 			"/api/v1/auth/resend-otp",
