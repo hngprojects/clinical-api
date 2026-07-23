@@ -13,7 +13,7 @@ from app.services.auth.tokens import create_access_token
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
-async def _create_user(*, email: str, role: UserRole = UserRole.DOCTOR, verified: bool = True) -> User:
+async def _create_user(*, email: str, role: UserRole = UserRole.PATIENT, verified: bool = True) -> User:
 	user = User(
 		id=uuid.uuid4(),
 		email=email,
