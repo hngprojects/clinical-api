@@ -20,6 +20,7 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
 	with op.get_context().autocommit_block():
 		op.execute("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'doctor'")
+		op.execute("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'admin'")
 
 
 def downgrade() -> None:

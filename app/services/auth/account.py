@@ -195,8 +195,7 @@ async def start_email_change(
 		raise BadRequestError("Incorrect password")
 
 	normalized_email = new_email.strip().lower()
-	existing = await user_repo.get_by_email(normalized_email)
-	if existing is not None and existing.id != user.id:
+	if await user_repo.count_by_email(normalized_email, exclude_user_id=user.id):
 		raise ConflictError("This email is already linked to another account.")
 
 	_, code = await create_otp_for_user(otp_repo, user_id=user.id, purpose=OtpPurpose.EMAIL_VERIFICATION)

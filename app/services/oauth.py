@@ -78,7 +78,7 @@ async def get_or_create_google_user(
 		await user_repo.refresh(user)
 		return user
 
-	# Check for email collision across all roles.
+	# Check for email collision
 	existing = await user_repo.get_by_email(email)
 	if existing:
 		raise ConflictError("An account with this email already exists. Please log in instead.")

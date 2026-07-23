@@ -26,6 +26,14 @@ class UserRepository:
 	async def get_by_email_and_role(self, email: str, role: UserRole) -> User | None:
 		return await self.get_by_email(email, role=role)
 
+	async def count_by_email(self, email: str, *, exclude_user_id: UUID | None = None) -> int:
+		normalized = email.strip().lower()
+		stmt = select(User).where(User.email == normalized)
+		if exclude_user_id is not None:
+			stmt = stmt.where(User.id != exclude_user_id)
+		result = await self._session.execute(stmt)
+		return len(result.scalars().all())
+
 	async def get_by_google_id(self, google_id: str, *, role: UserRole | None = None) -> User | None:
 		stmt = select(User).where(User.google_id == google_id)
 		if role is not None:

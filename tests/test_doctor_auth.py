@@ -114,6 +114,8 @@ async def test_doctor_signup_allows_duplicate_unverified_email(client: AsyncClie
 	assert response.status_code == 201, response.text
 	assert mock_delay.called
 
+	await _delete_user_by_email(email)
+
 
 async def test_doctor_signup_validates_password_strength(client: AsyncClient) -> None:
 	payload = _doctor_signup_payload(password="weak", confirm_password="weak")
@@ -196,6 +198,8 @@ async def test_patient_login_rejects_doctor_account(client: AsyncClient) -> None
 	body = response.json()
 	assert body["status"] == "error"
 	assert "credentials" in body["message"].lower()
+
+	await _delete_user_by_email(email)
 
 
 async def test_doctor_login_rejects_unverified_account(client: AsyncClient) -> None:
@@ -290,6 +294,8 @@ async def test_duplicate_doctor_same_email_rejected(client: AsyncClient) -> None
 	payload = _doctor_signup_payload(email=email)
 	response = await client.post(f"{API}/signup", json=payload)
 	assert response.status_code == 409, response.text
+
+	await _delete_user_by_email(email)
 
 
 async def test_doctor_login_creates_auth_session_row(client: AsyncClient) -> None:

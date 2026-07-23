@@ -16,7 +16,7 @@ from app.api.deps import (
 	bearer_scheme,
 )
 from app.core.config import get_settings
-from app.core.exceptions import ForbiddenError, UnauthorizedError
+from app.core.exceptions import ForbiddenError, NotFoundError, UnauthorizedError
 from app.core.rate_limit import (
 	assert_login_not_rate_limited,
 	clear_login_failures,
@@ -147,7 +147,7 @@ async def doctor_login(
 			password=payload.password,
 			expected_role=UserRole.DOCTOR,
 		)
-	except (UnauthorizedError, ForbiddenError):
+	except (NotFoundError, UnauthorizedError, ForbiddenError):
 		await record_login_failure(ip_hash)
 		raise
 	await clear_login_failures(ip_hash)
