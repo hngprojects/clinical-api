@@ -78,7 +78,7 @@ async def verify_otp_for_user(
 
 	if otp.expires_at <= now:
 		otp.consumed_at = now
-		raise OtpVerificationError("Code has expired. Request a new one.")
+		raise OtpVerificationError("This code has expired. Please request a new one.")
 
 	settings = get_settings()
 	if otp.attempts >= settings.OTP_MAX_ATTEMPTS:
@@ -89,7 +89,7 @@ async def verify_otp_for_user(
 		otp.attempts += 1
 		if otp.attempts >= settings.OTP_MAX_ATTEMPTS:
 			otp.consumed_at = now
-		raise OtpVerificationError("Invalid code.")
+		raise OtpVerificationError("The code you entered is incorrect.")
 
 	otp.consumed_at = now
 	return otp

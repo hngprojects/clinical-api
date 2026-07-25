@@ -1,10 +1,12 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 from app.core.password_policy import validate_password_strength
 from app.models.auth_session import AuthSession
+from app.models.user import UserRole
 from app.schemas.user import UserResponse
 
 
@@ -74,12 +76,15 @@ class VerifyOtpRequest(BaseModel):
 	guest_session_id: str | None = None
 	device_id: str = Field(default="unknown", min_length=1, max_length=255)
 	platform: str | None = Field(default="web", max_length=32)
+	purpose: Literal["email_verification", "reset_password"] = "email_verification"
+	role: UserRole = UserRole.PATIENT
 
 
 class ResendOtpRequest(BaseModel):
 	model_config = ConfigDict(str_strip_whitespace=True)
 
 	email: EmailStr
+	role: UserRole = UserRole.PATIENT
 
 
 class TokenResponse(BaseModel):
@@ -120,6 +125,7 @@ class OtpDispatchResponse(BaseModel):
 
 class ForgotPasswordRequest(BaseModel):
 	email: EmailStr
+	role: UserRole = UserRole.PATIENT
 
 
 class VerifyResetOtpRequest(BaseModel):
@@ -127,6 +133,7 @@ class VerifyResetOtpRequest(BaseModel):
 
 	email: EmailStr
 	code: str = Field(min_length=4, max_length=12)
+	role: UserRole = UserRole.PATIENT
 
 
 class ResetTokenResponse(BaseModel):

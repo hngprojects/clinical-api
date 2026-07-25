@@ -128,7 +128,7 @@ async def test_verify_otp_rate_limit_blocks_after_multiple_failures(client) -> N
 			url="/api/v1/auth/verify-otp",
 			payload_factory=lambda attempt: {"email": user.email, "code": "000000", "device_id": "rl-matrix"},
 			count=settings.OTP_FAILURE_RATE_LIMIT,
-			allowed_statuses=(401,),
+			allowed_statuses=(400,),
 		)
 	finally:
 		await _delete_user(user.id)

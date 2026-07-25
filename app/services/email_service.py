@@ -21,6 +21,7 @@ class EMAIL_TYPE(str, Enum):
 	WAITLIST = "WAITLIST"
 	WELCOME = "WELCOME"
 	CONTACT = "CONTACT"
+	VERIFICATION_STATUS = "VERIFICATION_STATUS"
 
 
 _TEMPLATES_DIR = Path(__file__).parent.parent / "templates" / "emails"
@@ -77,6 +78,12 @@ def _prepare_contact(ctx: dict) -> None:
 	ctx["message"] = ctx.get("message", "")
 
 
+def _prepare_verification_status(ctx: dict) -> None:
+	ctx["first_name"] = ctx.get("first_name") or "doctor"
+	ctx["status"] = ctx.get("status") or "pending"
+	ctx["rejection_reason"] = ctx.get("rejection_reason") or ""
+
+
 _TEMPLATE_REGISTRY: dict[EMAIL_TYPE, _TemplateConfig] = {
 	EMAIL_TYPE.PASSWORD_RESET: _TemplateConfig(
 		template_doctor="password_reset_doctor.html",
@@ -107,6 +114,12 @@ _TEMPLATE_REGISTRY: dict[EMAIL_TYPE, _TemplateConfig] = {
 		template_user="contact.html",
 		subject="We received your message — Clinsight",
 		prepare_context=_prepare_contact,
+	),
+	EMAIL_TYPE.VERIFICATION_STATUS: _TemplateConfig(
+		template_doctor="verification_status_doctor.html",
+		template_user="verification_status_doctor.html",
+		subject="Clinsight Doctor Verification Status Update",
+		prepare_context=_prepare_verification_status,
 	),
 }
 

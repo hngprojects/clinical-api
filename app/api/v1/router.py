@@ -5,6 +5,9 @@ from app.api.v1.endpoints import (
 	auth,
 	chat,
 	contact,
+	doctor_auth,
+	doctor_verification,
+	doctors,
 	export,
 	guest_cases,
 	guest_session,
@@ -21,6 +24,7 @@ from app.api.v1.endpoints import (
 api_router = APIRouter()
 api_router.include_router(health.router, tags=["health"])
 api_router.include_router(auth.router)
+api_router.include_router(doctor_auth.router)
 api_router.include_router(guest_session.router)
 api_router.include_router(guest_cases.router)
 api_router.include_router(medical_case.router)
@@ -33,4 +37,6 @@ api_router.include_router(contact.router)
 api_router.include_router(subscribe.router)
 api_router.include_router(export.router)
 api_router.include_router(users.router)
+api_router.include_router(doctors.router)
+api_router.include_router(doctor_verification.router)
 api_router.include_router(ws_chat.router)

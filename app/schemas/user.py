@@ -72,3 +72,34 @@ class UserResponse(UserBase):
 	last_login_at: datetime | None = None
 
 	model_config = ConfigDict(from_attributes=True)
+
+
+class DashboardSummary(BaseModel):
+	"""Nested dashboard payload easily extensible for future widgets/modules."""
+
+	total_cases: int = 0
+	pending_reviews: int = 0
+	completed_reviews: int = 0
+
+	model_config = ConfigDict(from_attributes=True)
+
+
+class UserMeResponse(BaseModel):
+	"""Primary endpoint response shape for profile data, verification status, and dashboard FE routing guard."""
+
+	id: UUID
+	email: str
+	first_name: str
+	last_name: str
+	role: UserRole
+	is_email_verified: bool
+	is_active: bool
+	avatar_url: str | None = None
+	specialty: str | None = None
+	verification_status: str = "not_submitted"
+	rejection_reason: str | None = None
+	dashboard: DashboardSummary = Field(default_factory=DashboardSummary)
+	created_at: datetime
+	last_login_at: datetime | None = None
+
+	model_config = ConfigDict(from_attributes=True)

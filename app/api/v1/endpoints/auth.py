@@ -23,18 +23,22 @@ from app.api.deps import (
 	bearer_scheme,
 )
 from app.core.config import get_settings
-from app.core.exceptions import ForbiddenError, NotFoundError, UnauthorizedError
+from app.core.exceptions import BadRequestError, ForbiddenError, NotFoundError, UnauthorizedError
 from app.core.rate_limit import (
 	assert_login_not_rate_limited,
+	assert_otp_not_locked,
 	clear_login_failures,
+	clear_otp_failures,
 	enforce_action_rate_limit,
 	enforce_rate_limit,
 	record_login_failure,
+	record_otp_failure,
 	record_verify_otp_failure,
 )
 from app.core.responses import SuccessResponse
 from app.core.security import hash_opaque_token
 from app.models.otp import OtpPurpose
+from app.models.user import UserRole
 from app.schemas.auth import (
 	AuthSessionResponse,
 	ForgotPasswordRequest,
@@ -52,13 +56,11 @@ from app.schemas.auth import (
 from app.schemas.user import UserResponse
 from app.services.auth import (
 	authenticate_credentials,
-	authenticate_otp,
 	create_otp_for_user,
 	create_password_reset,
 	decode_access_token,
 	decode_refresh_token,
 	otp_ttl_seconds,
-	resend_otp,
 	reset_password,
 	revoke_refresh_token,
 	signup_user,
@@ -173,7 +175,9 @@ async def login(
 	"""
 	await assert_login_not_rate_limited(ip_hash)
 	try:
-		user = await authenticate_credentials(user_repo, email=payload.email, password=payload.password)
+		user = await authenticate_credentials(
+			user_repo, email=payload.email, password=payload.password, expected_role=UserRole.PATIENT
+		)
 	except (UnauthorizedError, NotFoundError, ForbiddenError):
 		await record_login_failure(ip_hash)
 		raise
@@ -195,7 +199,7 @@ async def login(
 # OTP verification & resend
 @router.post(
 	"/verify-otp",
-	response_model=SuccessResponse[TokenResponse],
+	response_model=SuccessResponse[TokenResponse | ResetTokenResponse],
 )
 async def verify_otp(
 	payload: VerifyOtpRequest,
@@ -208,26 +212,66 @@ async def verify_otp(
 	auth_manager: AuthSessionManagerDep,
 	ip_hash: ClientIpHash,
 	response: Response,
-) -> SuccessResponse[TokenResponse]:
-	"""Verify the email-verification OTP sent after signup."""
-
+) -> SuccessResponse:
+	"""Verify the email-verification or password-reset OTP."""
 	settings = get_settings()
+
+	# Enforce rate limit per email lockout first
+	await assert_otp_not_locked(payload.email)
+
+	# Log the attempt (never log OTP value)
+	logger.info("OTP verification attempt: email=%s, purpose=%s", _mask_email(payload.email), payload.purpose)
+
 	await enforce_action_rate_limit(
 		key=f"rl:verify-otp:{ip_hash}",
 		limit=settings.OTP_FAILURE_RATE_LIMIT,
 		window_seconds=settings.OTP_FAILURE_RATE_WINDOW_SECONDS,
 		message="Too many OTP verification attempts. Try again later.",
 	)
+
+	user = await user_repo.get_by_email(payload.email.strip().lower(), role=payload.role)
+	if user is None:
+		await record_verify_otp_failure(ip_hash)
+		await record_otp_failure(payload.email)
+		raise BadRequestError("The code you entered is incorrect.")
+
+	purpose_enum = OtpPurpose.RESET_PASSWORD if payload.purpose == "reset_password" else OtpPurpose.EMAIL_VERIFICATION
+
 	try:
-		user = await authenticate_otp(
-			user_repo,
+		await verify_otp_for_user(
 			otp_repo,
-			email=payload.email,
+			user_id=user.id,
+			purpose=purpose_enum,
 			code=payload.code,
 		)
-	except (ForbiddenError, UnauthorizedError):
+	except OtpVerificationError as exc:
+		await user_repo.commit()
 		await record_verify_otp_failure(ip_hash)
-		raise
+		await record_otp_failure(payload.email)
+		raise BadRequestError(str(exc))
+
+	# Clear failures upon successful verification
+	await clear_otp_failures(payload.email)
+
+	if purpose_enum == OtpPurpose.RESET_PASSWORD:
+		settings = get_settings()
+		reset_repo = PasswordResetRepo(user_repo._session)
+		raw = await create_password_reset(
+			reset_repo, user, expires_minutes=settings.PASSWORD_RESET_TOKEN_EXPIRES_MINUTES
+		)
+		await user_repo.commit()
+		return SuccessResponse(
+			message="Reset token issued.",
+			data=ResetTokenResponse(
+				reset_token=raw,
+				expires_in_seconds=settings.PASSWORD_RESET_TOKEN_EXPIRES_MINUTES * 60,
+			),
+		)
+
+	# Email verification flow
+	user.is_email_verified = True
+	user.last_login_at = datetime.now(timezone.utc)
+	await user_repo.commit()
 
 	migration_guest_id = payload.guest_session_id or guest_session_id
 	if migration_guest_id:
@@ -262,8 +306,12 @@ async def resend(
 	otp_repo: OtpRepo,
 	ip_hash: ClientIpHash,
 ) -> SuccessResponse[OtpDispatchResponse]:
-	"""Re-send the email-verification OTP."""
+	"""Re-send the OTP (email-verification or password-reset)."""
 	settings = get_settings()
+
+	# Log the attempt (never log OTP value)
+	normalized_email = payload.email.strip().lower()
+	logger.info("OTP resend request: email=%s", _mask_email(normalized_email))
 
 	await enforce_action_rate_limit(
 		key=f"rl:resend-otp:{ip_hash}",
@@ -272,18 +320,61 @@ async def resend(
 		message="Too many OTP resend requests. Try again later.",
 	)
 
-	user, code = await resend_otp(user_repo, otp_repo, email=payload.email)
+	# Rate limit resend per email
+	await enforce_action_rate_limit(
+		key=f"rl:resend-otp:{normalized_email}",
+		limit=settings.RESEND_OTP_RATE_LIMIT,
+		window_seconds=settings.RESEND_OTP_RATE_WINDOW_SECONDS,
+		message="Too many OTP resend requests. Try again later.",
+	)
+
+	user = await user_repo.get_by_email(normalized_email, role=payload.role)
+	if not user or not user.is_active:
+		# Return the same success response to prevent account enumeration
+		return SuccessResponse(
+			message="A new code has been sent to your email.",
+			data=OtpDispatchResponse(
+				email=normalized_email,
+				expires_in_seconds=otp_ttl_seconds(),
+			),
+		)
+
+	# Determine OTP purpose
+	latest_otp = await otp_repo.get_latest_active(user_id=user.id, purpose=OtpPurpose.RESET_PASSWORD)
+	if latest_otp:
+		purpose = OtpPurpose.RESET_PASSWORD
+	else:
+		latest_otp = await otp_repo.get_latest_active(user_id=user.id, purpose=OtpPurpose.EMAIL_VERIFICATION)
+		if latest_otp:
+			purpose = OtpPurpose.EMAIL_VERIFICATION
+		else:
+			purpose = OtpPurpose.RESET_PASSWORD if user.is_email_verified else OtpPurpose.EMAIL_VERIFICATION
+
+	if purpose == OtpPurpose.EMAIL_VERIFICATION and user.is_email_verified:
+		# Return success directly
+		return SuccessResponse(
+			message="A new code has been sent to your email.",
+			data=OtpDispatchResponse(
+				email=normalized_email,
+				expires_in_seconds=otp_ttl_seconds(),
+			),
+		)
+
+	_, code = await create_otp_for_user(otp_repo, user_id=user.id, purpose=purpose)
+	await user_repo.commit()
+
 	email_dispatched = False
 	try:
 		send_otp_email_task.delay(
 			to_email=user.email,
 			first_name=user.first_name or user.email.split("@")[0],
 			code=code,
-			purpose=OtpPurpose.EMAIL_VERIFICATION.value,
+			purpose=purpose.value,
 		)
 		email_dispatched = True
 	except Exception:
 		logger.exception("Failed to enqueue OTP email for %s", _mask_email(user.email))
+
 	return SuccessResponse(
 		message=(
 			"A new code has been sent to your email."
@@ -291,7 +382,7 @@ async def resend(
 			else "A new code was created. If you do not receive an email, request another code."
 		),
 		data=OtpDispatchResponse(
-			email=user.email,
+			email=normalized_email,
 			expires_in_seconds=otp_ttl_seconds(),
 		),
 	)
@@ -334,7 +425,7 @@ async def forgot_password(
 		message="Too many password reset requests. Try again later.",
 	)
 
-	user = await user_repo.get_by_email(payload.email.strip().lower())
+	user = await user_repo.get_by_email(payload.email.strip().lower(), payload.role)
 	if user:
 		_, code = await create_otp_for_user(otp_repo, user_id=user.id, purpose=OtpPurpose.RESET_PASSWORD)
 		await session.commit()
@@ -354,7 +445,7 @@ async def verify_reset_otp(
 	session: DBSession,
 ) -> SuccessResponse[ResetTokenResponse]:
 	"""Verify a password-reset OTP and issue an opaque reset token for final password change."""
-	user = await user_repo.get_by_email(request.email.strip().lower())
+	user = await user_repo.get_by_email(request.email.strip().lower(), request.role)
 	if not user:
 		raise UnauthorizedError("Invalid or expired reset OTP")
 

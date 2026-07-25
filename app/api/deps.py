@@ -21,6 +21,7 @@ from app.repositories.ai_interpretation import AIInterpretationRepository
 from app.repositories.auth_session import AuthSessionRepository
 from app.repositories.chat import ChatRepository
 from app.repositories.contact import ContactRepository
+from app.repositories.doctor_verification import DoctorVerificationRepository
 from app.repositories.guest_session import GuestSessionRepository
 from app.repositories.lab_result import LabResultRepository
 from app.repositories.medical_case import MedicalCaseRepository
@@ -112,6 +113,10 @@ def get_pipeline_audit_log_repo(session: DBSession) -> PipelineAuditLogRepositor
 	return PipelineAuditLogRepository(session)
 
 
+def get_doctor_verification_repo(session: DBSession) -> DoctorVerificationRepository:
+	return DoctorVerificationRepository(session)
+
+
 # Annotated shortcuts
 UserRepo = Annotated[UserRepository, Depends(get_user_repo)]
 OtpRepo = Annotated[OtpRepository, Depends(get_otp_repo)]
@@ -129,6 +134,7 @@ AuthSessionRepo = Annotated[AuthSessionRepository, Depends(get_auth_session_repo
 AuthSessionManagerDep = Annotated[AuthSessionManager, Depends(get_auth_session_manager)]
 GuestSessionManagerDep = Annotated[GuestSessionManager, Depends(get_guest_session_manager)]
 PipelineAuditLogRepo = Annotated[PipelineAuditLogRepository, Depends(get_pipeline_audit_log_repo)]
+DoctorVerificationRepo = Annotated[DoctorVerificationRepository, Depends(get_doctor_verification_repo)]
 
 
 # Auth guard

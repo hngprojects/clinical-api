@@ -2,7 +2,7 @@ import httpx
 
 from app.core.config import get_settings
 from app.core.exceptions import ConflictError, UnauthorizedError
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.repositories.user import UserRepository
 
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -67,8 +67,8 @@ async def get_or_create_google_user(
 	if not email_verified:
 		raise UnauthorizedError("Google email address is not verified")
 
-	# Check if user already exists by Google ID
-	user = await user_repo.get_by_google_id(google_id)
+	# Check if user already exists by Google ID (patient accounts only).
+	user = await user_repo.get_by_google_id_and_role(google_id, UserRole.PATIENT)
 	if user:
 		user.email = email
 		user.first_name = given_name
@@ -79,7 +79,7 @@ async def get_or_create_google_user(
 		return user
 
 	# Check for email collision
-	existing = await user_repo.get_by_email(email)
+	existing = await user_repo.get_by_email_and_role(email, UserRole.PATIENT)
 	if existing:
 		raise ConflictError("An account with this email already exists. Please log in instead.")
 

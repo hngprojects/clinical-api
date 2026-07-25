@@ -115,6 +115,12 @@ class Settings(BaseSettings):
 	FRONTEND_URL: str = ""
 
 	MEDIA_DIR: str = "media"
+	PRIVATE_MEDIA_DIR: str = "private_media"
+	R2_ACCOUNT_ID: str = ""
+	R2_ACCESS_KEY_ID: str = ""
+	R2_SECRET_ACCESS_KEY: str = ""
+	R2_BUCKET_NAME: str = ""
+	R2_CUSTOM_DOMAIN: str = ""
 	RESEND_API_KEY: str | None = None
 	RESEND_FROM_EMAIL: str = ""
 	MAILERLITE_API_KEY: str | None = None
