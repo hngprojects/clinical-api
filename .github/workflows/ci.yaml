@@ -122,6 +122,26 @@ jobs:
           MINIO_BUCKET_NAME: ""
         run: uv run alembic upgrade head
 
+
+      - name: Run Auth Specific Tests
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5433/test_db
+          JWT_SECRET: ci-test-jwt-secret-not-for-production
+          OTP_PEPPER: ci-test-otp-pepper-not-for-production
+        run: |
+          uv run pytest \
+            tests/test_auth_login_rate_limit.py \
+            tests/test_auth_rate_limit_matrix.py \
+            tests/test_auth_refresh_token_response.py \
+            tests/test_auth_sessions.py \
+            tests/test_auth_signup_name_validation.py \
+            tests/test_logout.py \
+            tests/test_oauth_state.py \
+            tests/test_doctor_auth.py \
+            tests/test_doc_auth_otp.py \
+            tests/test_doc_verification_api.py \
+            --tb=short -q
+
       - name: Start API and run tests
         env:
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5433/test_db
