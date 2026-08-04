@@ -186,3 +186,7 @@ scripts/smoke-session-management.sh
 curl_test.sh
 docker/.env
 .env.example
+branch_structure.json
+
+.vscode/
+public/fonts/
