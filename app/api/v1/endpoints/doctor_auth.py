@@ -118,6 +118,7 @@ async def doctor_signup(
 		data=OtpDispatchResponse(
 			email=user.email,
 			expires_in_seconds=otp_ttl_seconds(),
+			role=UserRole.DOCTOR,
 		),
 	)
 

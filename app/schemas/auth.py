@@ -117,10 +117,16 @@ class TokenPair(BaseModel):
 
 
 class OtpDispatchResponse(BaseModel):
-	"""Returned after an OTP is dispatched (signup or resend)."""
+	"""Returned after an OTP is dispatched (signup or resend).
+
+	``role`` is populated for doctor signups so the frontend knows the
+	account's role immediately (before the user calls /auth/me).
+	It is ``None`` for patient signups to maintain backward-compatibility.
+	"""
 
 	email: EmailStr
 	expires_in_seconds: int
+	role: UserRole | None = None
 
 
 class ForgotPasswordRequest(BaseModel):
