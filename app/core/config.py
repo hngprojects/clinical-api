@@ -23,6 +23,7 @@ class Settings(BaseSettings):
 
 	PROJECT_NAME: str = "Clinsights"
 	API_V1_PREFIX: str = "/api/v1"
+	ENVIRONMENT: str = APP_ENV
 
 	DATABASE_URL: PostgresDsn
 
@@ -61,6 +62,20 @@ class Settings(BaseSettings):
 	BREVO_API_KEY: str | None = Field(default=None)
 	BREVO_FROM_EMAIL: str = Field(default="")
 	BREVO_FROM_NAME: str = "Clinsights"
+
+	# Test settings (Play Store / App Store reviewer bypass - fail-closed by default)
+	ALLOW_STATIC_TEST_OTP: bool = False
+	STATIC_TEST_OTP_CODE: str = ""
+	TEST_REVIEWER_EMAILS: list[str] = Field(default_factory=list)
+
+	@field_validator("TEST_REVIEWER_EMAILS", mode="before")
+	@classmethod
+	def parse_reviewer_emails(cls, v: object) -> list[str]:
+		if isinstance(v, str):
+			return [e.strip().lower() for e in v.split(",") if e.strip()]
+		if isinstance(v, list):
+			return [str(e).strip().lower() for e in v if str(e).strip()]
+		return []
 
 	# SMTP (fallback email provider)
 	SMTP_HOST: str = ""

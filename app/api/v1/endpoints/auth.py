@@ -243,6 +243,7 @@ async def verify_otp(
 			user_id=user.id,
 			purpose=purpose_enum,
 			code=payload.code,
+			user_email=payload.email,
 		)
 	except OtpVerificationError as exc:
 		await user_repo.commit()
