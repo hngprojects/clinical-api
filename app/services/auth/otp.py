@@ -112,4 +112,3 @@ async def verify_otp_for_user(
 
 	otp.consumed_at = now
 	return otp
-

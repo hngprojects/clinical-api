@@ -64,9 +64,7 @@ class Settings(BaseSettings):
 
 	# Test settings (Play Store / App Store reviewer bypass)
 	STATIC_TEST_OTP_CODE: str = "123456"
-	TEST_REVIEWER_EMAILS: list[str] = Field(
-		default_factory=lambda: ["playstore.reviewer@clinsights.com"]
-	)
+	TEST_REVIEWER_EMAILS: list[str] = Field(default_factory=lambda: ["playstore.reviewer@clinsights.com"])
 
 	@field_validator("TEST_REVIEWER_EMAILS", mode="before")
 	@classmethod
@@ -76,7 +74,6 @@ class Settings(BaseSettings):
 		if isinstance(v, list):
 			return [str(e).strip().lower() for e in v if str(e).strip()]
 		return ["playstore.reviewer@clinsights.com"]
-
 
 	# SMTP (fallback email provider)
 	SMTP_HOST: str = ""

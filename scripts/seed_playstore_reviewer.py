@@ -1,4 +1,5 @@
 import asyncio
+
 from sqlalchemy import select
 
 from app.core.config import get_settings
@@ -9,17 +10,11 @@ from app.models.user import User, UserRole
 
 async def seed_reviewer_account() -> None:
 	settings = get_settings()
-	email = (
-		settings.TEST_REVIEWER_EMAILS[0]
-		if settings.TEST_REVIEWER_EMAILS
-		else "playstore.reviewer@clinsights.com"
-	)
+	email = settings.TEST_REVIEWER_EMAILS[0] if settings.TEST_REVIEWER_EMAILS else "playstore.reviewer@clinsights.com"
 	password = "PlayStoreReviewer2026!"
 
 	async with AsyncSessionLocal() as session:
-		result = await session.execute(
-			select(User).where(User.email == email, User.role == UserRole.PATIENT)
-		)
+		result = await session.execute(select(User).where(User.email == email, User.role == UserRole.PATIENT))
 		existing = result.scalar_one_or_none()
 
 		if existing:
