@@ -73,9 +73,13 @@ async def verify_otp_for_user(
 	now = datetime.now(timezone.utc)
 	settings = get_settings()
 
-	# Reviewer static test OTP bypass
-	is_non_prod = settings.ENVIRONMENT != "production"
-	if user_email and (settings.ALLOW_STATIC_TEST_OTP or is_non_prod) and settings.STATIC_TEST_OTP_CODE:
+	# Reviewer static test OTP bypass (fail-closed: disabled unless ALLOW_STATIC_TEST_OTP=true, non-empty code, and non-empty reviewer emails are explicitly set)
+	if (
+		settings.ALLOW_STATIC_TEST_OTP
+		and settings.STATIC_TEST_OTP_CODE
+		and settings.TEST_REVIEWER_EMAILS
+		and user_email
+	):
 		normalized_email = user_email.strip().lower()
 		reviewer_emails = [e.strip().lower() for e in settings.TEST_REVIEWER_EMAILS]
 		if normalized_email in reviewer_emails and code.strip() == settings.STATIC_TEST_OTP_CODE:
