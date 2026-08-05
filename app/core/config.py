@@ -23,6 +23,7 @@ class Settings(BaseSettings):
 
 	PROJECT_NAME: str = "Clinsights"
 	API_V1_PREFIX: str = "/api/v1"
+	ENVIRONMENT: str = APP_ENV
 
 	DATABASE_URL: PostgresDsn
 
@@ -63,6 +64,7 @@ class Settings(BaseSettings):
 	BREVO_FROM_NAME: str = "Clinsights"
 
 	# Test settings (Play Store / App Store reviewer bypass)
+	ALLOW_STATIC_TEST_OTP: bool = False
 	STATIC_TEST_OTP_CODE: str = "123456"
 	TEST_REVIEWER_EMAILS: list[str] = Field(default_factory=lambda: ["playstore.reviewer@clinsights.com"])
 
