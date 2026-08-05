@@ -7,6 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 APP_ENV = os.getenv("APP_ENV", "staging")
 
 ENV_FILES = {
+	"dev": ".env",
 	"staging": ".env.staging",
 	"production": ".env.production",
 }
