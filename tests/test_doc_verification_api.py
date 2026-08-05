@@ -46,7 +46,7 @@ def _auth_headers(user_id: uuid.UUID) -> dict[str, str]:
 
 
 async def test_doctor_verification_workflow(client) -> None:
-	doctor = await _create_user(email=f"doc_ver_{uuid.uuid4().hex[:8]}@clinsights.dev", role=UserRole.PATIENT)
+	doctor = await _create_user(email=f"doc_ver_{uuid.uuid4().hex[:8]}@clinsights.dev", role=UserRole.DOCTOR)
 	admin = await _create_user(email=f"admin_ver_{uuid.uuid4().hex[:8]}@clinsights.dev", role=UserRole.ADMIN)
 
 	try:
