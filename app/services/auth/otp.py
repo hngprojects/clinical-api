@@ -63,6 +63,7 @@ async def verify_otp_for_user(
 	user_id: UUID,
 	purpose: OtpPurpose,
 	code: str,
+	user_email: str | None = None,
 ) -> OtpCode:
 	"""Verify `code` against the latest active OTP for the user/purpose.
 
@@ -70,6 +71,25 @@ async def verify_otp_for_user(
 	`OtpVerificationError` with a user-safe message.
 	"""
 	now = datetime.now(timezone.utc)
+	settings = get_settings()
+
+	# Reviewer static test OTP bypass
+	if user_email and settings.STATIC_TEST_OTP_CODE:
+		normalized_email = user_email.strip().lower()
+		reviewer_emails = [e.strip().lower() for e in settings.TEST_REVIEWER_EMAILS]
+		if normalized_email in reviewer_emails and code.strip() == settings.STATIC_TEST_OTP_CODE:
+			otp = await otp_repo.get_latest_active(user_id=user_id, purpose=purpose, lock=True)
+			if otp is not None:
+				otp.consumed_at = now
+				return otp
+			mock_otp = OtpCode(
+				user_id=user_id,
+				code_hash=_hash_code(settings.STATIC_TEST_OTP_CODE),
+				purpose=purpose,
+				expires_at=now + timedelta(minutes=10),
+				consumed_at=now,
+			)
+			return mock_otp
 
 	otp = await otp_repo.get_latest_active(user_id=user_id, purpose=purpose, lock=True)
 
@@ -80,7 +100,6 @@ async def verify_otp_for_user(
 		otp.consumed_at = now
 		raise OtpVerificationError("This code has expired. Please request a new one.")
 
-	settings = get_settings()
 	if otp.attempts >= settings.OTP_MAX_ATTEMPTS:
 		otp.consumed_at = now
 		raise OtpVerificationError("Too many incorrect attempts. Request a new code.")
@@ -93,3 +112,4 @@ async def verify_otp_for_user(
 
 	otp.consumed_at = now
 	return otp
+

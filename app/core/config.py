@@ -62,6 +62,22 @@ class Settings(BaseSettings):
 	BREVO_FROM_EMAIL: str = Field(default="")
 	BREVO_FROM_NAME: str = "Clinsights"
 
+	# Test settings (Play Store / App Store reviewer bypass)
+	STATIC_TEST_OTP_CODE: str = "123456"
+	TEST_REVIEWER_EMAILS: list[str] = Field(
+		default_factory=lambda: ["playstore.reviewer@clinsights.com"]
+	)
+
+	@field_validator("TEST_REVIEWER_EMAILS", mode="before")
+	@classmethod
+	def parse_reviewer_emails(cls, v: object) -> list[str]:
+		if isinstance(v, str):
+			return [e.strip().lower() for e in v.split(",") if e.strip()]
+		if isinstance(v, list):
+			return [str(e).strip().lower() for e in v if str(e).strip()]
+		return ["playstore.reviewer@clinsights.com"]
+
+
 	# SMTP (fallback email provider)
 	SMTP_HOST: str = ""
 	SMTP_PORT: str = ""
