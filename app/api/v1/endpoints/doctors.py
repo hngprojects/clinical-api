@@ -3,7 +3,7 @@ import logging
 from fastapi import APIRouter, status
 from sqlalchemy import select
 
-from app.api.deps import CurrentUser, DBSession
+from app.api.deps import DBSession, DoctorUser
 from app.core.exceptions import ForbiddenError
 from app.core.responses import SuccessResponse
 from app.models.doctor_verification import DoctorVerification, DoctorVerificationStatus
@@ -16,13 +16,14 @@ router = APIRouter(prefix="/doctors", tags=["doctors"])
 
 @router.get("/dashboard", response_model=SuccessResponse[UserMeResponse], status_code=status.HTTP_200_OK)
 async def get_doctor_dashboard(
-	current_user: CurrentUser,
+	current_user: DoctorUser,
 	session: DBSession,
 ) -> SuccessResponse[UserMeResponse]:
 	"""Return Doctor Dashboard Overview data.
 
-	Authoritative source of truth: Enforces that the user is fully email-verified
-	and has an APPROVED Doctor verification status (returning 403 Forbidden otherwise).
+	Requires a valid Bearer JWT *and* role == DOCTOR (enforced by DoctorUser
+	dep).  Additionally enforces that the doctor's verification status is
+	APPROVED, returning 403 Forbidden otherwise.
 	"""
 	stmt = select(DoctorVerification).where(DoctorVerification.user_id == current_user.id)
 	res = await session.execute(stmt)

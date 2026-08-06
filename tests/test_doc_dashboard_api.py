@@ -98,12 +98,24 @@ async def test_users_me_authenticated_with_verification(client) -> None:
 
 async def test_doctors_dashboard_gate_enforcement(client) -> None:
 	# 1. Unverified doctor -> 403
-	user_unverified = await _create_user(email=f"unver_{uuid.uuid4().hex[:8]}@clinsights.dev", verified=False)
+	user_unverified = await _create_user(
+		email=f"unver_{uuid.uuid4().hex[:8]}@clinsights.dev",
+		role=UserRole.DOCTOR,
+		verified=False,
+	)
 	# 2. Pending doctor -> 403
-	user_pending = await _create_user(email=f"pending_{uuid.uuid4().hex[:8]}@clinsights.dev", verified=True)
+	user_pending = await _create_user(
+		email=f"pending_{uuid.uuid4().hex[:8]}@clinsights.dev",
+		role=UserRole.DOCTOR,
+		verified=True,
+	)
 	await _create_verification(user_pending.id, DoctorVerificationStatus.PENDING)
 	# 3. Approved doctor -> 200
-	user_approved = await _create_user(email=f"appr_{uuid.uuid4().hex[:8]}@clinsights.dev", verified=True)
+	user_approved = await _create_user(
+		email=f"appr_{uuid.uuid4().hex[:8]}@clinsights.dev",
+		role=UserRole.DOCTOR,
+		verified=True,
+	)
 	await _create_verification(user_approved.id, DoctorVerificationStatus.APPROVED)
 
 	try:

@@ -7,7 +7,7 @@ from fastapi import APIRouter, File, Form, Query, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 
-from app.api.deps import CurrentUser, DBSession, DoctorVerificationRepo
+from app.api.deps import CurrentUser, DBSession, DoctorUser, DoctorVerificationRepo
 from app.core.config import get_settings
 from app.core.exceptions import BadRequestError, ConflictError, ForbiddenError, NotFoundError
 from app.core.responses import SuccessResponse
@@ -125,7 +125,7 @@ async def _save_uploaded_documents(
 
 @router.post("", response_model=SuccessResponse[DoctorVerificationResponse], status_code=status.HTTP_201_CREATED)
 async def submit_verification(
-	current_user: CurrentUser,
+	current_user: DoctorUser,
 	repo: DoctorVerificationRepo,
 	license_number: str = Form(...),
 	issuing_state: str = Form(...),
@@ -195,7 +195,7 @@ async def submit_verification(
 
 @router.get("/status", response_model=SuccessResponse[DoctorVerificationResponse])
 async def get_verification_status(
-	current_user: CurrentUser,
+	current_user: DoctorUser,
 	repo: DoctorVerificationRepo,
 ) -> SuccessResponse[DoctorVerificationResponse]:
 	"""Fetch current status, rejection reason, and timestamps for the authenticated doctor."""
@@ -227,7 +227,7 @@ async def get_verification_status(
 
 @router.put("", response_model=SuccessResponse[DoctorVerificationResponse])
 async def resubmit_verification(
-	current_user: CurrentUser,
+	current_user: DoctorUser,
 	repo: DoctorVerificationRepo,
 	license_number: str = Form(...),
 	issuing_state: str = Form(...),

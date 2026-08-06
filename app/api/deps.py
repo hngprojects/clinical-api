@@ -7,7 +7,7 @@ from fastapi import Depends, Header, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import UnauthorizedError
+from app.core.exceptions import ForbiddenError, UnauthorizedError
 from app.core.guest_session import (
 	DEVICE_FINGERPRINT_HEADER,
 	get_client_ip,
@@ -16,7 +16,10 @@ from app.core.guest_session import (
 )
 from app.db.session import get_session
 from app.models.guest_session import GuestSession
-from app.models.user import User
+from app.models.user import (
+	User,
+	UserRole,
+)
 from app.repositories.ai_interpretation import AIInterpretationRepository
 from app.repositories.auth_session import AuthSessionRepository
 from app.repositories.chat import ChatRepository
@@ -178,6 +181,32 @@ async def get_current_user(
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+def require_role(*allowed_roles: UserRole):
+	"""Build a dependency that chains onto CurrentUser and enforces role membership.
+
+	Ensures every role-scoped route validates the JWT *and* confirms the user
+	holds one of the allowed roles.  Returns the user unchanged so downstream
+	endpoints receive the same object they would from ``CurrentUser``.
+	"""
+	if not allowed_roles:
+		raise ValueError("require_role() requires at least one role.")
+
+	async def _require_role(current_user: CurrentUser) -> User:
+		if current_user.role not in allowed_roles:
+			if len(allowed_roles) == 1:
+				role_name = allowed_roles[0].value.title()
+				raise ForbiddenError(f"{role_name} credentials required.")
+			names = ", ".join(role.value for role in allowed_roles)
+			raise ForbiddenError(f"One of the following roles is required: {names}.")
+		return current_user
+
+	return _require_role
+
+
+# Typed shortcut: JWT-authenticated + role==DOCTOR
+DoctorUser = Annotated[User, Depends(require_role(UserRole.DOCTOR))]
 
 
 async def get_optional_user(

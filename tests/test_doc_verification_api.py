@@ -46,7 +46,7 @@ def _auth_headers(user_id: uuid.UUID) -> dict[str, str]:
 
 
 async def test_doctor_verification_workflow(client) -> None:
-	doctor = await _create_user(email=f"doc_ver_{uuid.uuid4().hex[:8]}@clinsights.dev", role=UserRole.PATIENT)
+	doctor = await _create_user(email=f"doc_ver_{uuid.uuid4().hex[:8]}@clinsights.dev", role=UserRole.DOCTOR)
 	admin = await _create_user(email=f"admin_ver_{uuid.uuid4().hex[:8]}@clinsights.dev", role=UserRole.ADMIN)
 
 	try:
@@ -95,7 +95,10 @@ async def test_doctor_verification_workflow(client) -> None:
 			"medical_license": ("license.exe", b"malicious code", "application/x-msdownload"),
 			"government_id": ("id.png", b"mock government id content", "image/png"),
 		}
-		doctor2 = await _create_user(email=f"doc_badfile_{uuid.uuid4().hex[:8]}@clinsights.dev")
+		doctor2 = await _create_user(
+			email=f"doc_badfile_{uuid.uuid4().hex[:8]}@clinsights.dev",
+			role=UserRole.DOCTOR,
+		)
 		res_badfile = await client.post(
 			"/api/v1/doctors/verification",
 			data=data,
@@ -111,7 +114,10 @@ async def test_doctor_verification_workflow(client) -> None:
 			"medical_license": ("large_license.pdf", huge_data, "application/pdf"),
 			"government_id": ("id.png", b"mock government id content", "image/png"),
 		}
-		doctor3 = await _create_user(email=f"doc_huge_{uuid.uuid4().hex[:8]}@clinsights.dev")
+		doctor3 = await _create_user(
+			email=f"doc_huge_{uuid.uuid4().hex[:8]}@clinsights.dev",
+			role=UserRole.DOCTOR,
+		)
 		res_huge = await client.post(
 			"/api/v1/doctors/verification",
 			data=data,
