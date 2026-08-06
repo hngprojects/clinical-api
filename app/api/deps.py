@@ -183,21 +183,30 @@ async def get_current_user(
 CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
-async def require_doctor_role(current_user: CurrentUser) -> User:
-	"""Chain onto CurrentUser to enforce role == DOCTOR.
+def require_role(*allowed_roles: UserRole):
+	"""Build a dependency that chains onto CurrentUser and enforces role membership.
 
-	Ensures every doctor-scoped route validates the JWT *and* confirms the
-	role, even after a doctor's verification is approved.  Returns the user
-	unchanged so downstream endpoints receive the same object they would from
-	``CurrentUser``.
+	Ensures every role-scoped route validates the JWT *and* confirms the user
+	holds one of the allowed roles.  Returns the user unchanged so downstream
+	endpoints receive the same object they would from ``CurrentUser``.
 	"""
-	if current_user.role != UserRole.DOCTOR:
-		raise ForbiddenError("Doctor credentials required.")
-	return current_user
+	if not allowed_roles:
+		raise ValueError("require_role() requires at least one role.")
+
+	async def _require_role(current_user: CurrentUser) -> User:
+		if current_user.role not in allowed_roles:
+			if len(allowed_roles) == 1:
+				role_name = allowed_roles[0].value.title()
+				raise ForbiddenError(f"{role_name} credentials required.")
+			names = ", ".join(role.value for role in allowed_roles)
+			raise ForbiddenError(f"One of the following roles is required: {names}.")
+		return current_user
+
+	return _require_role
 
 
 # Typed shortcut: JWT-authenticated + role==DOCTOR
-DoctorUser = Annotated[User, Depends(require_doctor_role)]
+DoctorUser = Annotated[User, Depends(require_role(UserRole.DOCTOR))]
 
 
 async def get_optional_user(
