@@ -47,7 +47,7 @@ def test_oauth_state_only_keeps_allowed_return_url(monkeypatch: pytest.MonkeyPat
 			JWT_SECRET="x" * 32,
 			JWT_ALGORITHM="HS256",
 			OAUTH_STATE_EXPIRES_MINUTES=10,
-			FRONTEND_AUTH_CALLBACK_URL="https://frontend.example/auth/callback",
+			FRONTEND_AUTH_CALLBACK_URL="https://frontend.example/login",
 		),
 	)
 
@@ -56,12 +56,17 @@ def test_oauth_state_only_keeps_allowed_return_url(monkeypatch: pytest.MonkeyPat
 	assert allowed_parsed is not None
 	assert allowed_parsed.return_url == "clinsight://auth/google"
 
+	allowed_web_token = create_oauth_state(return_url="https://frontend.example/login")
+	allowed_web_parsed = decode_oauth_state(allowed_web_token)
+	assert allowed_web_parsed is not None
+	assert allowed_web_parsed.return_url == "https://frontend.example/login"
+
 	allowed_with_query_token = create_oauth_state(return_url="clinsight://auth/google?next=/dashboard#ignore")
 	allowed_with_query_parsed = decode_oauth_state(allowed_with_query_token)
 	assert allowed_with_query_parsed is not None
 	assert allowed_with_query_parsed.return_url == "clinsight://auth/google"
 
-	blocked_token = create_oauth_state(return_url="https://evil.example/auth/callback")
+	blocked_token = create_oauth_state(return_url="https://evil.example/login")
 	blocked_parsed = decode_oauth_state(blocked_token)
 	assert blocked_parsed is not None
 	assert blocked_parsed.return_url is None
