@@ -2,7 +2,7 @@ import json
 import os
 from functools import lru_cache
 
-from pydantic import Field, PostgresDsn, field_validator
+from pydantic import Field, PostgresDsn, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 APP_ENV = os.getenv("APP_ENV", "staging")
@@ -159,10 +159,21 @@ class Settings(BaseSettings):
 			raise ValueError("RESEND_FROM_EMAIL must be set when RESEND_API_KEY is configured")
 		return v
 
-	# Password reset
-	FRONTEND_RESET_PASSWORD_URL: str = f"{FRONTEND_URL}/reset-password"
-	FRONTEND_AUTH_CALLBACK_URL: str = f"{FRONTEND_URL}/auth/callback"
+	# Password reset / OAuth return URLs (derived from FRONTEND_URL when unset)
+	FRONTEND_RESET_PASSWORD_URL: str = ""
+	FRONTEND_AUTH_CALLBACK_URL: str = ""
 	PASSWORD_RESET_TOKEN_EXPIRES_MINUTES: int = 60
+
+	@model_validator(mode="after")
+	def derive_frontend_urls(self) -> "Settings":
+		base = self.FRONTEND_URL.rstrip("/")
+		if not base:
+			return self
+		if not self.FRONTEND_RESET_PASSWORD_URL:
+			self.FRONTEND_RESET_PASSWORD_URL = f"{base}/reset-password"
+		if not self.FRONTEND_AUTH_CALLBACK_URL:
+			self.FRONTEND_AUTH_CALLBACK_URL = f"{base}/login"
+		return self
 
 
 @lru_cache
