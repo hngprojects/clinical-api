@@ -12,6 +12,7 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 import jwt
 
 from app.core.config import get_settings
+from app.models.user import UserRole
 from app.services.guest import normalize_guest_session_id
 
 
@@ -21,6 +22,7 @@ class OAuthStatePayload:
 	device_id: str | None
 	platform: str | None
 	return_url: str | None
+	role: UserRole | None = None
 
 
 def _is_allowed_return_url(candidate: str, frontend_callback_url: str) -> bool:
@@ -60,6 +62,7 @@ def create_oauth_state(
 	device_id: str | None = None,
 	platform: str | None = None,
 	return_url: str | None = None,
+	role: UserRole | None = None,
 ) -> str:
 	"""Build a short-lived signed state value for the OAuth redirect."""
 	settings = get_settings()
@@ -86,6 +89,8 @@ def create_oauth_state(
 		candidate = return_url.strip()[:500]
 		if _is_allowed_return_url(candidate, settings.FRONTEND_AUTH_CALLBACK_URL):
 			payload["return_url"] = _normalize_return_url(candidate)
+	if role:
+		payload["role"] = role.value
 
 	return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
 
@@ -93,7 +98,7 @@ def create_oauth_state(
 def decode_oauth_state(state: str) -> OAuthStatePayload | None:
 	"""Verify OAuth state and return embedded guest session / device metadata."""
 	if not state or not state.strip():
-		return OAuthStatePayload(guest_session_id=None, device_id=None, platform=None, return_url=None)
+		return OAuthStatePayload(guest_session_id=None, device_id=None, platform=None, return_url=None, role=None)
 
 	settings = get_settings()
 	try:
@@ -126,9 +131,18 @@ def decode_oauth_state(state: str) -> OAuthStatePayload | None:
 	return_url_raw = payload.get("return_url")
 	return_url = str(return_url_raw).strip()[:500] if return_url_raw else None
 
+	role_raw = payload.get("role")
+	role: UserRole | None = None
+	if role_raw:
+		try:
+			role = UserRole(str(role_raw))
+		except ValueError:
+			role = None
+
 	return OAuthStatePayload(
 		guest_session_id=guest_id,
 		device_id=device_id,
 		platform=platform,
 		return_url=return_url,
+		role=role,
 	)
