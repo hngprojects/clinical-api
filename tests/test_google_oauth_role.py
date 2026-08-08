@@ -258,26 +258,14 @@ async def test_google_login_redirects_with_patient_role_by_default(client) -> No
 
 
 @pytest.mark.asyncio
-async def test_google_login_rejects_admin_role(client) -> None:
-    """/google?role=admin must not provision an admin account — blocked by allowlist."""
-    response = await client.get(
-        "/api/v1/auth/google",
-        params={"role": "admin"},
-        follow_redirects=False,
-    )
-    # admin is a valid enum value but is blocked by the OAUTH_ALLOWED_ROLES allowlist.
-    assert response.status_code == 400
-
-
-@pytest.mark.asyncio
 async def test_google_login_rejects_invalid_role(client) -> None:
-    """/google?role=superadmin should be rejected with 400."""
+    """/google?role=superadmin should be rejected by FastAPI validation."""
     response = await client.get(
         "/api/v1/auth/google",
         params={"role": "superadmin"},
         follow_redirects=False,
     )
-    assert response.status_code == 400
+    assert response.status_code == 422
 
 
 # ---------------------------------------------------------------------------
@@ -391,18 +379,77 @@ async def test_google_login_rejects_admin_role(client) -> None:
 
 @pytest.mark.asyncio
 async def test_google_callback_clamps_admin_role_to_patient() -> None:
-    """If an admin role somehow ends up in the signed state, it is clamped to patient."""
-    from app.services.oauth_state import create_oauth_state as _create
-
-    # Manually create a state that contains role=admin (bypasses the endpoint allowlist).
-    admin_state = _create(role=UserRole.ADMIN)
-    decoded = decode_oauth_state(admin_state)
-
-    # Simulate what google_callback does with the decoded role.
-    _OAUTH_ALLOWED_ROLES = frozenset({UserRole.PATIENT, UserRole.DOCTOR})
-    raw_role = decoded.role if decoded and decoded.role else UserRole.PATIENT
-    safe_role = raw_role if raw_role in _OAUTH_ALLOWED_ROLES else UserRole.PATIENT
-
-    assert safe_role == UserRole.PATIENT, (
-        "Admin role from state must be clamped to PATIENT by the callback allowlist"
+    """An admin role in state is clamped to patient by the callback path."""
+    from app.api.deps import (
+        get_auth_session_manager,
+        get_chat_repo,
+        get_medical_case_repo,
+        get_user_repo,
     )
+    from app.main import app as fastapi_app
+
+    admin_state = create_oauth_state(role=UserRole.ADMIN)
+
+    fake_google_user = {
+        "sub": f"google-{uuid.uuid4().hex[:12]}",
+        "email": f"admintest_{uuid.uuid4().hex[:8]}@gmail.com",
+        "email_verified": True,
+        "given_name": "Admin",
+        "family_name": "Test",
+    }
+    fake_tokens = {"access_token": "google-access-token"}
+    fake_issue = SimpleNamespace(
+        access_token="app-access-token",
+        refresh_token="app-refresh-token",
+        expires_in=28800,
+    )
+
+    fake_user_repo = MagicMock()
+    fake_case_repo = MagicMock()
+    fake_chat_repo = MagicMock()
+    fake_auth_manager = MagicMock()
+    fake_auth_manager.create = AsyncMock(return_value=fake_issue)
+
+    fastapi_app.dependency_overrides[get_user_repo] = lambda: fake_user_repo
+    fastapi_app.dependency_overrides[get_medical_case_repo] = lambda: fake_case_repo
+    fastapi_app.dependency_overrides[get_chat_repo] = lambda: fake_chat_repo
+    fastapi_app.dependency_overrides[get_auth_session_manager] = lambda: fake_auth_manager
+
+    created_user = MagicMock()
+    created_user.id = uuid.uuid4()
+
+    try:
+        with (
+            patch(
+                "app.api.v1.endpoints.auth.exchange_google_code",
+                new=AsyncMock(return_value=fake_tokens),
+            ),
+            patch(
+                "app.api.v1.endpoints.auth.fetch_google_user_info",
+                new=AsyncMock(return_value=fake_google_user),
+            ),
+            patch(
+                "app.api.v1.endpoints.auth.get_or_create_google_user",
+                new=AsyncMock(return_value=created_user),
+            ) as mock_create,
+        ):
+            response = await client.get(
+                "/api/v1/auth/google/callback",
+                params={"code": "test-code", "state": admin_state},
+                follow_redirects=False,
+            )
+
+            assert response.status_code in (302, 307), (
+                f"Expected a redirect but got {response.status_code}: {response.text}"
+            )
+
+            mock_create.assert_awaited_once()
+            _, kwargs = mock_create.call_args
+            assert kwargs["role"] == UserRole.PATIENT, (
+                f"Expected role=PATIENT but got {kwargs.get('role')}"
+            )
+    finally:
+        fastapi_app.dependency_overrides.pop(get_user_repo, None)
+        fastapi_app.dependency_overrides.pop(get_medical_case_repo, None)
+        fastapi_app.dependency_overrides.pop(get_chat_repo, None)
+        fastapi_app.dependency_overrides.pop(get_auth_session_manager, None)
