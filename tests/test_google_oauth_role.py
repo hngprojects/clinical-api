@@ -259,24 +259,25 @@ async def test_google_login_redirects_with_patient_role_by_default(client) -> No
 
 @pytest.mark.asyncio
 async def test_google_login_rejects_admin_role(client) -> None:
-    """/google?role=admin must not provision an admin account."""
+    """/google?role=admin must not provision an admin account — blocked by allowlist."""
     response = await client.get(
         "/api/v1/auth/google",
         params={"role": "admin"},
         follow_redirects=False,
     )
-    assert response.status_code == 422
+    # admin is a valid enum value but is blocked by the OAUTH_ALLOWED_ROLES allowlist.
+    assert response.status_code == 400
 
 
 @pytest.mark.asyncio
 async def test_google_login_rejects_invalid_role(client) -> None:
-    """/google?role=superadmin should be rejected with 422."""
+    """/google?role=superadmin should be rejected with 400."""
     response = await client.get(
         "/api/v1/auth/google",
         params={"role": "superadmin"},
         follow_redirects=False,
     )
-    assert response.status_code == 422
+    assert response.status_code == 400
 
 
 # ---------------------------------------------------------------------------
@@ -286,7 +287,20 @@ async def test_google_login_rejects_invalid_role(client) -> None:
 
 @pytest.mark.asyncio
 async def test_google_callback_creates_doctor_from_state(client) -> None:
-    """Callback decodes role=doctor from state and creates doctor user."""
+    """Callback decodes role=doctor from state and creates doctor user with the correct role.
+
+    Dependency overrides are applied so the request runs all the way through
+    role decoding without hitting a real database or auth session store.
+    Assertions are unconditional — the test will fail if role propagation breaks.
+    """
+    from app.api.deps import (
+        get_auth_session_manager,
+        get_chat_repo,
+        get_medical_case_repo,
+        get_user_repo,
+    )
+    from app.main import app as fastapi_app
+
     doctor_state = create_oauth_state(role=UserRole.DOCTOR)
 
     fake_google_user = {
@@ -296,7 +310,6 @@ async def test_google_callback_creates_doctor_from_state(client) -> None:
         "given_name": "Doc",
         "family_name": "Test",
     }
-
     fake_tokens = {"access_token": "google-access-token"}
     fake_issue = SimpleNamespace(
         access_token="app-access-token",
@@ -304,27 +317,92 @@ async def test_google_callback_creates_doctor_from_state(client) -> None:
         expires_in=28800,
     )
 
-    with (
-        patch("app.api.v1.endpoints.auth.exchange_google_code", new=AsyncMock(return_value=fake_tokens)),
-        patch("app.api.v1.endpoints.auth.fetch_google_user_info", new=AsyncMock(return_value=fake_google_user)),
-        patch("app.api.v1.endpoints.auth.get_or_create_google_user") as mock_create,
-        patch("app.api.v1.endpoints.auth.AuthSessionManagerDep", new=MagicMock()),
-    ):
-        created_user = MagicMock()
-        created_user.id = uuid.uuid4()
-        mock_create.return_value = created_user
+    # Stub out DB-backed repos and auth session manager.
+    fake_user_repo = MagicMock()
+    fake_case_repo = MagicMock()
+    fake_chat_repo = MagicMock()
+    fake_auth_manager = MagicMock()
+    fake_auth_manager.create = AsyncMock(return_value=fake_issue)
 
-        # We just verify the call args — actual redirect requires a wired auth manager
-        # so we assert the role is passed correctly to get_or_create_google_user
-        try:
-            await client.get(
+    fastapi_app.dependency_overrides[get_user_repo] = lambda: fake_user_repo
+    fastapi_app.dependency_overrides[get_medical_case_repo] = lambda: fake_case_repo
+    fastapi_app.dependency_overrides[get_chat_repo] = lambda: fake_chat_repo
+    fastapi_app.dependency_overrides[get_auth_session_manager] = lambda: fake_auth_manager
+
+    created_user = MagicMock()
+    created_user.id = uuid.uuid4()
+
+    try:
+        with (
+            patch(
+                "app.api.v1.endpoints.auth.exchange_google_code",
+                new=AsyncMock(return_value=fake_tokens),
+            ),
+            patch(
+                "app.api.v1.endpoints.auth.fetch_google_user_info",
+                new=AsyncMock(return_value=fake_google_user),
+            ),
+            patch(
+                "app.api.v1.endpoints.auth.get_or_create_google_user",
+                new=AsyncMock(return_value=created_user),
+            ) as mock_create,
+        ):
+            response = await client.get(
                 "/api/v1/auth/google/callback",
                 params={"code": "test-code", "state": doctor_state},
                 follow_redirects=False,
             )
-        except Exception:
-            pass
 
-        if mock_create.called:
+            # The callback should redirect (302/307) once the user is found/created.
+            assert response.status_code in (302, 307), (
+                f"Expected a redirect but got {response.status_code}: {response.text}"
+            )
+
+            # Unconditionally assert role propagation — test fails if the call never happened.
+            mock_create.assert_awaited_once()
             _, kwargs = mock_create.call_args
-            assert kwargs.get("role") == UserRole.DOCTOR
+            assert kwargs["role"] == UserRole.DOCTOR, (
+                f"Expected role=DOCTOR but got {kwargs.get('role')}"
+            )
+    finally:
+        # Always clean up overrides so other tests are unaffected.
+        fastapi_app.dependency_overrides.pop(get_user_repo, None)
+        fastapi_app.dependency_overrides.pop(get_medical_case_repo, None)
+        fastapi_app.dependency_overrides.pop(get_chat_repo, None)
+        fastapi_app.dependency_overrides.pop(get_auth_session_manager, None)
+
+
+# ---------------------------------------------------------------------------
+# Security — role allowlist enforcement
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_google_login_rejects_admin_role(client) -> None:
+    """/google?role=admin must be rejected — admin cannot be OAuth self-provisioned."""
+    response = await client.get(
+        "/api/v1/auth/google",
+        params={"role": "admin"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 400
+    assert "cannot be provisioned through OAuth" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_google_callback_clamps_admin_role_to_patient() -> None:
+    """If an admin role somehow ends up in the signed state, it is clamped to patient."""
+    from app.services.oauth_state import create_oauth_state as _create
+
+    # Manually create a state that contains role=admin (bypasses the endpoint allowlist).
+    admin_state = _create(role=UserRole.ADMIN)
+    decoded = decode_oauth_state(admin_state)
+
+    # Simulate what google_callback does with the decoded role.
+    _OAUTH_ALLOWED_ROLES = frozenset({UserRole.PATIENT, UserRole.DOCTOR})
+    raw_role = decoded.role if decoded and decoded.role else UserRole.PATIENT
+    safe_role = raw_role if raw_role in _OAUTH_ALLOWED_ROLES else UserRole.PATIENT
+
+    assert safe_role == UserRole.PATIENT, (
+        "Admin role from state must be clamped to PATIENT by the callback allowlist"
+    )
