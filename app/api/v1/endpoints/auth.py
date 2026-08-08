@@ -535,6 +535,7 @@ async def google_login(
 	device_id: str | None = Query(None, description="Client device identifier for per-device auth session"),
 	platform: str | None = Query("web", description="Client platform (web, ios, android)"),
 	return_url: str | None = Query(None, description="Mobile deep link to redirect after auth"),
+	role: UserRole = Query(UserRole.PATIENT, description="Desired role of the user"),
 ) -> RedirectResponse:
 	"""Redirect to Google's OAuth consent screen."""
 	settings = get_settings()
@@ -543,6 +544,7 @@ async def google_login(
 		device_id=device_id,
 		platform=platform,
 		return_url=return_url,
+		role=role,
 	)
 	query_params = urlencode(
 		{
@@ -576,9 +578,11 @@ async def google_callback(
 		raise UnauthorizedError("Google access token not found")
 
 	google_user = await fetch_google_user_info(google_access_token)
-	user = await get_or_create_google_user(user_repo, google_user)
 
 	oauth_ctx = decode_oauth_state(state)
+	role = oauth_ctx.role if oauth_ctx else UserRole.PATIENT
+
+	user = await get_or_create_google_user(user_repo, google_user, role=role)
 	guest_id = oauth_ctx.guest_session_id if oauth_ctx else None
 	if guest_id:
 		await migrate_guest_session_to_user(
