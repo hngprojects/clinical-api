@@ -580,7 +580,7 @@ async def google_callback(
 	google_user = await fetch_google_user_info(google_access_token)
 
 	oauth_ctx = decode_oauth_state(state)
-	role = oauth_ctx.role if oauth_ctx else UserRole.PATIENT
+	role = oauth_ctx.role if oauth_ctx and oauth_ctx.role else UserRole.PATIENT
 
 	user = await get_or_create_google_user(user_repo, google_user, role=role)
 	guest_id = oauth_ctx.guest_session_id if oauth_ctx else None
