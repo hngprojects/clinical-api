@@ -258,6 +258,17 @@ async def test_google_login_redirects_with_patient_role_by_default(client) -> No
 
 
 @pytest.mark.asyncio
+async def test_google_login_rejects_admin_role(client) -> None:
+    """/google?role=admin must not provision an admin account."""
+    response = await client.get(
+        "/api/v1/auth/google",
+        params={"role": "admin"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_google_login_rejects_invalid_role(client) -> None:
     """/google?role=superadmin should be rejected with 422."""
     response = await client.get(
@@ -265,7 +276,6 @@ async def test_google_login_rejects_invalid_role(client) -> None:
         params={"role": "superadmin"},
         follow_redirects=False,
     )
-
     assert response.status_code == 422
 
 
