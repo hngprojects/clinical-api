@@ -132,7 +132,12 @@ def decode_oauth_state(state: str) -> OAuthStatePayload | None:
 	return_url = str(return_url_raw).strip()[:500] if return_url_raw else None
 
 	role_raw = payload.get("role")
-	role = UserRole(str(role_raw)) if role_raw else None
+	role: UserRole | None = None
+	if role_raw:
+		try:
+			role = UserRole(str(role_raw))
+		except ValueError:
+			role = None
 
 	return OAuthStatePayload(
 		guest_session_id=guest_id,
