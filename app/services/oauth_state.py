@@ -12,8 +12,8 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 import jwt
 
 from app.core.config import get_settings
-from app.services.guest import normalize_guest_session_id
 from app.models.user import UserRole
+from app.services.guest import normalize_guest_session_id
 
 
 @dataclass(frozen=True)
