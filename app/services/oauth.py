@@ -47,6 +47,7 @@ async def fetch_google_user_info(access_token: str) -> dict:
 async def get_or_create_google_user(
 	user_repo: UserRepository,
 	google_user: dict,
+	*,
 	role: UserRole = UserRole.PATIENT,
 ) -> User:
 	"""Find or create a user from Google profile data with a specified role."""
