@@ -270,8 +270,6 @@ async def test_google_login_rejects_invalid_role(client) -> None:
 
 # ---------------------------------------------------------------------------
 # /google/callback — role decoding from state
-async def test_google_callback_clamps_admin_role_to_patient(client) -> None:
-
 
 @pytest.mark.asyncio
 async def test_google_callback_creates_doctor_from_state(client) -> None:
@@ -374,7 +372,7 @@ async def test_google_login_rejects_admin_role(client) -> None:
         follow_redirects=False,
     )
     assert response.status_code == 400
-    assert "cannot be provisioned through OAuth" in response.json()["detail"]
+    assert "cannot be provisioned through OAuth" in response.json()["message"]
 
 
 @pytest.mark.asyncio
