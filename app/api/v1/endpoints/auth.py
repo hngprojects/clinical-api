@@ -4,7 +4,7 @@ from typing import Annotated
 from urllib.parse import urlencode
 from uuid import UUID
 
-from fastapi import APIRouter, Cookie, Depends, Query, Request, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse, Response
 from fastapi.security import HTTPAuthorizationCredentials
 
@@ -81,6 +81,10 @@ from app.tasks.emails import send_otp_email_task
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+# Roles that may be self-provisioned through OAuth.
+# Admin accounts must be created through a privileged back-office flow only.
+_OAUTH_ALLOWED_ROLES: frozenset[UserRole] = frozenset({UserRole.PATIENT, UserRole.DOCTOR})
 
 
 def _mask_email(email: str) -> str:
@@ -535,14 +539,18 @@ async def google_login(
 	device_id: str | None = Query(None, description="Client device identifier for per-device auth session"),
 	platform: str | None = Query("web", description="Client platform (web, ios, android)"),
 	return_url: str | None = Query(None, description="Mobile deep link to redirect after auth"),
+	role: UserRole = Query(UserRole.PATIENT, description="Desired role of the user (patient or doctor)"),
 ) -> RedirectResponse:
 	"""Redirect to Google's OAuth consent screen."""
+	if role not in _OAUTH_ALLOWED_ROLES:
+		raise HTTPException(status_code=400, detail=f"Role '{role.value}' cannot be provisioned through OAuth.")
 	settings = get_settings()
 	oauth_state = create_oauth_state(
 		guest_session_id=guest_session_id,
 		device_id=device_id,
 		platform=platform,
 		return_url=return_url,
+		role=role,
 	)
 	query_params = urlencode(
 		{
@@ -576,9 +584,14 @@ async def google_callback(
 		raise UnauthorizedError("Google access token not found")
 
 	google_user = await fetch_google_user_info(google_access_token)
-	user = await get_or_create_google_user(user_repo, google_user)
 
 	oauth_ctx = decode_oauth_state(state)
+	# Clamp to the allowlist — guards against a tampered/upgraded state token
+	# that somehow encodes a privileged role (e.g. admin).
+	raw_role = oauth_ctx.role if oauth_ctx and oauth_ctx.role else UserRole.PATIENT
+	role = raw_role if raw_role in _OAUTH_ALLOWED_ROLES else UserRole.PATIENT
+
+	user = await get_or_create_google_user(user_repo, google_user, role=role)
 	guest_id = oauth_ctx.guest_session_id if oauth_ctx else None
 	if guest_id:
 		await migrate_guest_session_to_user(

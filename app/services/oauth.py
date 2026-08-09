@@ -47,8 +47,10 @@ async def fetch_google_user_info(access_token: str) -> dict:
 async def get_or_create_google_user(
 	user_repo: UserRepository,
 	google_user: dict,
+	*,
+	role: UserRole = UserRole.PATIENT,
 ) -> User:
-	"""Find or create a user from Google profile data."""
+	"""Find or create a user from Google profile data with a specified role."""
 	google_id = google_user.get("sub")
 	email = google_user.get("email")
 	email_verified = google_user.get("email_verified", False)
@@ -67,8 +69,8 @@ async def get_or_create_google_user(
 	if not email_verified:
 		raise UnauthorizedError("Google email address is not verified")
 
-	# Check if user already exists by Google ID (patient accounts only).
-	user = await user_repo.get_by_google_id_and_role(google_id, UserRole.PATIENT)
+	# Check if user already exists by Google ID and role.
+	user = await user_repo.get_by_google_id_and_role(google_id, role)
 	if user:
 		user.email = email
 		user.first_name = given_name
@@ -79,7 +81,7 @@ async def get_or_create_google_user(
 		return user
 
 	# Check for email collision
-	existing = await user_repo.get_by_email_and_role(email, UserRole.PATIENT)
+	existing = await user_repo.get_by_email_and_role(email, role)
 	if existing:
 		raise ConflictError("An account with this email already exists. Please log in instead.")
 
@@ -89,6 +91,7 @@ async def get_or_create_google_user(
 		first_name=given_name,
 		last_name=family_name,
 		is_email_verified=True,
+		role=role,
 	)
 	user_repo.add(user)
 	await user_repo.commit()
