@@ -175,6 +175,7 @@ jeff.py
 **/.DS_Store
 
 public/
+private_media/
 
 # Local agent / contributor changelog notes (not tracked)
 new_changes_*.md
