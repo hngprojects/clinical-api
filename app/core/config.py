@@ -136,6 +136,7 @@ class Settings(BaseSettings):
 	GEMINI_MODEL: str = "gemini-3-flash-preview"
 
 	PIPELINE_TIMEOUT_SECONDS: int = 30
+	DOCTOR_CASE_PREVIEW_LIMIT: int = Field(default=5, ge=1, le=50)
 
 	FRONTEND_URL: str = ""
 

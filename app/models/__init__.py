@@ -12,7 +12,7 @@ from app.models.doctor_verification import (
 )
 from app.models.guest_session import GuestSession
 from app.models.lab_result import LabResult
-from app.models.medical_case import MedicalCase
+from app.models.medical_case import DoctorCaseStatus, MedicalCase
 from app.models.notification import Notification
 from app.models.otp import OtpCode, OtpPurpose
 from app.models.pipeline_audit_log import PipelineAuditLog
@@ -31,6 +31,7 @@ __all__ = [
 	"Chat",
 	"LabResult",
 	"MedicalCase",
+	"DoctorCaseStatus",
 	"Notification",
 	"OtpCode",
 	"OtpPurpose",

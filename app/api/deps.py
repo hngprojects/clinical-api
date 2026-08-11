@@ -5,6 +5,7 @@ from uuid import UUID
 import jwt
 from fastapi import Depends, Header, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ForbiddenError, UnauthorizedError
@@ -207,6 +208,21 @@ def require_role(*allowed_roles: UserRole):
 
 # Typed shortcut: JWT-authenticated + role==DOCTOR
 DoctorUser = Annotated[User, Depends(require_role(UserRole.DOCTOR))]
+
+
+async def get_approved_doctor(current_user: DoctorUser, session: DBSession) -> User:
+	"""Require the authenticated doctor to have approved professional verification."""
+	from app.models.doctor_verification import DoctorVerification, DoctorVerificationStatus
+
+	result = await session.execute(
+		select(DoctorVerification.status).where(DoctorVerification.user_id == current_user.id)
+	)
+	if result.scalar_one_or_none() != DoctorVerificationStatus.APPROVED:
+		raise ForbiddenError("Access restricted. Doctor verification must be approved.")
+	return current_user
+
+
+ApprovedDoctor = Annotated[User, Depends(get_approved_doctor)]
 
 
 async def get_optional_user(
