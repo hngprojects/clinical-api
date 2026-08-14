@@ -69,6 +69,20 @@ class User(Base):
 		default=True,
 	)
 	avatar_url: Mapped[str | None] = mapped_column(String, nullable=True)
+	is_on_duty: Mapped[bool] = mapped_column(
+		Boolean,
+		nullable=False,
+		default=False,
+	)
+	on_duty_since: Mapped[datetime | None] = mapped_column(
+		DateTime(timezone=True),
+		nullable=True,
+	)
+	is_verification_dismissed: Mapped[bool] = mapped_column(
+		Boolean,
+		nullable=False,
+		default=False,
+	)
 	created_at: Mapped[datetime] = mapped_column(
 		DateTime(timezone=True),
 		nullable=False,

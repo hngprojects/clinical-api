@@ -51,6 +51,9 @@ async def get_current_user_profile(
 	session: DBSession,
 ) -> SuccessResponse[UserMeResponse]:
 	"""Primary endpoint returning user profile data, email verification status, doctor verification status, and dashboard payload."""
+	from app.api.v1.endpoints.doctors import _compute_duty_info, _get_doctor_statistics
+	from app.models.user import UserRole
+
 	stmt = select(DoctorVerification).where(DoctorVerification.user_id == current_user.id)
 	res = await session.execute(stmt)
 	verification = res.scalar_one_or_none()
@@ -62,6 +65,28 @@ async def get_current_user_profile(
 		else None
 	)
 	specialty = verification.specialty if verification else None
+
+	was_on_duty = current_user.is_on_duty
+	is_on_duty, expires_at, remaining_seconds = _compute_duty_info(current_user)
+	if was_on_duty and not is_on_duty:
+		await session.commit()
+
+	show_banner = (
+		verification is not None
+		and verification.status != DoctorVerificationStatus.APPROVED
+		and not current_user.is_verification_dismissed
+	)
+
+	dashboard_summary = DashboardSummary()
+	if current_user.role == UserRole.DOCTOR:
+		stats = await _get_doctor_statistics(session, current_user.id)
+		dashboard_summary = DashboardSummary(
+			total_cases=stats.total_cases,
+			pending_reviews=stats.pending_reviews,
+			accepted_cases=stats.accepted_cases,
+			completed_cases=stats.completed_cases,
+			earnings=stats.earnings,
+		)
 
 	me_payload = UserMeResponse(
 		id=current_user.id,
@@ -75,7 +100,12 @@ async def get_current_user_profile(
 		specialty=specialty,
 		verification_status=v_status,
 		rejection_reason=rejection_reason,
-		dashboard=DashboardSummary(),
+		is_on_duty=is_on_duty,
+		on_duty_expires_at=expires_at,
+		remaining_duty_seconds=remaining_seconds,
+		is_verification_dismissed=current_user.is_verification_dismissed,
+		show_verification_banner=show_banner,
+		dashboard=dashboard_summary,
 		created_at=current_user.created_at,
 		last_login_at=current_user.last_login_at,
 	)

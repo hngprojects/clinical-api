@@ -133,3 +133,75 @@ async def test_doctors_dashboard_gate_enforcement(client) -> None:
 		await _delete_user(user_unverified.id)
 		await _delete_user(user_pending.id)
 		await _delete_user(user_approved.id)
+
+
+async def test_doctor_dashboard_statistics_endpoint(client) -> None:
+	user = await _create_user(
+		email=f"stats_{uuid.uuid4().hex[:8]}@clinsights.dev",
+		role=UserRole.DOCTOR,
+		verified=True,
+	)
+	await _create_verification(user.id, DoctorVerificationStatus.APPROVED)
+	try:
+		res = await client.get("/api/v1/doctors/dashboard/statistics", headers=_auth_headers(user.id))
+		assert res.status_code == 200
+		data = res.json()["data"]
+		assert "pending_reviews" in data
+		assert "accepted_cases" in data
+		assert "completed_cases" in data
+		assert "earnings" in data
+	finally:
+		await _delete_user(user.id)
+
+
+async def test_doctor_duty_status_and_manual_off_duty_forbidden(client) -> None:
+	user = await _create_user(
+		email=f"duty_{uuid.uuid4().hex[:8]}@clinsights.dev",
+		role=UserRole.DOCTOR,
+		verified=True,
+	)
+	await _create_verification(user.id, DoctorVerificationStatus.APPROVED)
+	try:
+		# 1. Switch ON DUTY -> 200 OK
+		res_on = await client.post(
+			"/api/v1/doctors/duty-status",
+			json={"is_on_duty": True},
+			headers=_auth_headers(user.id),
+		)
+		assert res_on.status_code == 200
+		data_on = res_on.json()["data"]
+		assert data_on["is_on_duty"] is True
+		assert data_on["remaining_duty_seconds"] > 0
+
+		# 2. Attempt manual OFF DUTY -> 403 Forbidden
+		res_off = await client.post(
+			"/api/v1/doctors/duty-status",
+			json={"is_on_duty": False},
+			headers=_auth_headers(user.id),
+		)
+		assert res_off.status_code == 403
+	finally:
+		await _delete_user(user.id)
+
+
+async def test_unapproved_doctor_statistics_and_duty_status_returns_403(client) -> None:
+	user_pending = await _create_user(
+		email=f"unappr_duty_{uuid.uuid4().hex[:8]}@clinsights.dev",
+		role=UserRole.DOCTOR,
+		verified=True,
+	)
+	await _create_verification(user_pending.id, DoctorVerificationStatus.PENDING)
+	try:
+		res_stats = await client.get("/api/v1/doctors/dashboard/statistics", headers=_auth_headers(user_pending.id))
+		assert res_stats.status_code == 403
+
+		res_duty = await client.post(
+			"/api/v1/doctors/duty-status",
+			json={"is_on_duty": True},
+			headers=_auth_headers(user_pending.id),
+		)
+		assert res_duty.status_code == 403
+	finally:
+		await _delete_user(user_pending.id)
+
+
