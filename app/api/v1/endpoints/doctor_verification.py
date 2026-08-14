@@ -438,4 +438,3 @@ async def dismiss_verification_banner(
 	current_user.is_verification_dismissed = True
 	await session.commit()
 	return SuccessResponse(message="Verification status banner dismissed successfully.")
-

@@ -73,11 +73,7 @@ async def _get_doctor_statistics(session: DBSession, doctor_id) -> DoctorDashboa
 	completed_res = await session.execute(completed_stmt)
 	completed_cases = completed_res.scalar() or 0
 
-	total_stmt = (
-		select(func.count())
-		.select_from(MedicalCase)
-		.where(MedicalCase.doctor_id == doctor_id)
-	)
+	total_stmt = select(func.count()).select_from(MedicalCase).where(MedicalCase.doctor_id == doctor_id)
 	total_res = await session.execute(total_stmt)
 	total_cases = total_res.scalar() or 0
 
@@ -174,12 +170,14 @@ async def update_doctor_duty_status(
 	session: DBSession,
 ) -> SuccessResponse[DoctorDutyStatusResponse]:
 	"""Update doctor duty status.
-	
+
 	Doctors can switch ON DUTY. Manual OFF DUTY toggling by the doctor is disabled;
 	off-duty transition is automatically executed by the system after 12 hours.
 	"""
 	if not payload.is_on_duty:
-		raise ForbiddenError("Permission denied. Manual off-duty action disabled; system automatically sets off-duty status 12 hours after going on duty.")
+		raise ForbiddenError(
+			"Permission denied. Manual off-duty action disabled; system automatically sets off-duty status 12 hours after going on duty."
+		)
 
 	now = datetime.now(timezone.utc)
 	current_user.is_on_duty = True

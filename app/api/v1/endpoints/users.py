@@ -51,7 +51,6 @@ async def get_current_user_profile(
 	session: DBSession,
 ) -> SuccessResponse[UserMeResponse]:
 	"""Primary endpoint returning user profile data, email verification status, doctor verification status, and dashboard payload."""
-	from datetime import datetime, timedelta, timezone
 	from app.api.v1.endpoints.doctors import _compute_duty_info, _get_doctor_statistics
 	from app.models.user import UserRole
 
@@ -111,7 +110,6 @@ async def get_current_user_profile(
 	)
 
 	return SuccessResponse(message="User profile retrieved successfully", data=me_payload)
-
 
 
 @router.post("/me/email", response_model=SuccessResponse, status_code=status.HTTP_200_OK)
