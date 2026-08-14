@@ -1,7 +1,7 @@
 """add doctor duty status and verification banner dismissal to users table
 
 Revision ID: 890a1b2c3d4e
-Revises: 787c12b082b5
+Revises: 6f7a8b9c0d1e, a1efa2ce5f0d
 """
 from typing import Sequence, Union
 
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 revision: str = "890a1b2c3d4e"
-down_revision: Union[str, Sequence[str], None] = "787c12b082b5"
+down_revision: Union[str, Sequence[str], None] = ("6f7a8b9c0d1e", "a1efa2ce5f0d")
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
