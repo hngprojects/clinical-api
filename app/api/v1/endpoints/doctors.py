@@ -179,6 +179,17 @@ async def update_doctor_duty_status(
 			"Permission denied. Manual off-duty action disabled; system automatically sets off-duty status 12 hours after going on duty."
 		)
 
+	is_on_duty, expires_at, remaining_seconds = _compute_duty_info(current_user)
+	if is_on_duty:
+		return SuccessResponse(
+			message="Doctor is already ON DUTY.",
+			data=DoctorDutyStatusResponse(
+				is_on_duty=True,
+				on_duty_since=current_user.on_duty_since,
+				on_duty_expires_at=expires_at,
+				remaining_duty_seconds=remaining_seconds,
+			),
+		)
 	now = datetime.now(timezone.utc)
 	current_user.is_on_duty = True
 	current_user.on_duty_since = now
