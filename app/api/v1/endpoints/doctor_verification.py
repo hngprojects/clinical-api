@@ -427,3 +427,15 @@ async def view_local_document(
 		raise BadRequestError("Document is stored on remote cloud storage.")
 
 	return FileResponse(doc.file_path, media_type=doc.mime_type, filename=doc.filename)
+
+
+@router.post("/dismiss", response_model=SuccessResponse)
+async def dismiss_verification_banner(
+	current_user: DoctorUser,
+	session: DBSession,
+) -> SuccessResponse:
+	"""Mark doctor verification banner as dismissed so it does not render again."""
+	current_user.is_verification_dismissed = True
+	await session.commit()
+	return SuccessResponse(message="Verification status banner dismissed successfully.")
+

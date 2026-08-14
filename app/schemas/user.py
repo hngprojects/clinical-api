@@ -79,9 +79,36 @@ class DashboardSummary(BaseModel):
 
 	total_cases: int = 0
 	pending_reviews: int = 0
-	completed_reviews: int = 0
+	accepted_cases: int = 0
+	completed_cases: int = 0
+	earnings: float = 0.0
 
 	model_config = ConfigDict(from_attributes=True)
+
+
+class DoctorDutyStatusRequest(BaseModel):
+	"""Request schema for updating doctor duty status."""
+
+	is_on_duty: bool
+
+
+class DoctorDutyStatusResponse(BaseModel):
+	"""Response schema for doctor duty status."""
+
+	is_on_duty: bool
+	on_duty_since: datetime | None = None
+	on_duty_expires_at: datetime | None = None
+	remaining_duty_seconds: int = 0
+
+
+class DoctorDashboardStatisticsResponse(BaseModel):
+	"""Response schema for standalone doctor dashboard statistics."""
+
+	pending_reviews: int = 0
+	accepted_cases: int = 0
+	completed_cases: int = 0
+	earnings: float = 0.0
+	total_cases: int = 0
 
 
 class UserMeResponse(BaseModel):
@@ -98,6 +125,11 @@ class UserMeResponse(BaseModel):
 	specialty: str | None = None
 	verification_status: str = "not_submitted"
 	rejection_reason: str | None = None
+	is_on_duty: bool = False
+	on_duty_expires_at: datetime | None = None
+	remaining_duty_seconds: int = 0
+	is_verification_dismissed: bool = False
+	show_verification_banner: bool = True
 	dashboard: DashboardSummary = Field(default_factory=DashboardSummary)
 	created_at: datetime
 	last_login_at: datetime | None = None
