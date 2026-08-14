@@ -71,7 +71,6 @@ async def get_current_user_profile(
 	if was_on_duty and not is_on_duty:
 		await session.commit()
 
-
 	show_banner = (
 		verification is not None
 		and verification.status != DoctorVerificationStatus.APPROVED

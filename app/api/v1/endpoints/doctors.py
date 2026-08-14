@@ -73,11 +73,7 @@ async def _get_doctor_statistics(session: DBSession, doctor_id) -> DoctorDashboa
 	completed_res = await session.execute(completed_stmt)
 	completed_cases = completed_res.scalar() or 0
 
-	total_stmt = (
-		select(func.count())
-		.select_from(MedicalCase)
-		.where(MedicalCase.doctor_id == doctor_id)
-	)
+	total_stmt = select(func.count()).select_from(MedicalCase).where(MedicalCase.doctor_id == doctor_id)
 	total_res = await session.execute(total_stmt)
 	total_cases = total_res.scalar() or 0
 
