@@ -184,27 +184,24 @@ async def test_doctor_duty_status_and_manual_off_duty_forbidden(client) -> None:
 		await _delete_user(user.id)
 
 
-async def test_doctor_dismiss_verification_banner(client) -> None:
-	user = await _create_user(
-		email=f"dismiss_{uuid.uuid4().hex[:8]}@clinsights.dev",
+async def test_unapproved_doctor_statistics_and_duty_status_returns_403(client) -> None:
+	user_pending = await _create_user(
+		email=f"unappr_duty_{uuid.uuid4().hex[:8]}@clinsights.dev",
 		role=UserRole.DOCTOR,
 		verified=True,
 	)
-	await _create_verification(user.id, DoctorVerificationStatus.PENDING)
+	await _create_verification(user_pending.id, DoctorVerificationStatus.PENDING)
 	try:
-		# Dismiss banner
-		res_dismiss = await client.post(
-			"/api/v1/doctors/verification/dismiss",
-			headers=_auth_headers(user.id),
-		)
-		assert res_dismiss.status_code == 200
+		res_stats = await client.get("/api/v1/doctors/dashboard/statistics", headers=_auth_headers(user_pending.id))
+		assert res_stats.status_code == 403
 
-		# Verify /me payload shows banner is dismissed
-		res_me = await client.get("/api/v1/users/me", headers=_auth_headers(user.id))
-		assert res_me.status_code == 200
-		data_me = res_me.json()["data"]
-		assert data_me["is_verification_dismissed"] is True
-		assert data_me["show_verification_banner"] is False
+		res_duty = await client.post(
+			"/api/v1/doctors/duty-status",
+			json={"is_on_duty": True},
+			headers=_auth_headers(user_pending.id),
+		)
+		assert res_duty.status_code == 403
 	finally:
-		await _delete_user(user.id)
+		await _delete_user(user_pending.id)
+
 
