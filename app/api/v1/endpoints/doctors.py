@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, status
 from sqlalchemy import func, select
 
-from app.api.deps import DBSession, DoctorUser
+from app.api.deps import ApprovedDoctor, DBSession, DoctorUser
 from app.core.exceptions import ForbiddenError
 from app.core.responses import SuccessResponse
 from app.models.doctor_verification import DoctorVerification, DoctorVerificationStatus
@@ -73,7 +73,11 @@ async def _get_doctor_statistics(session: DBSession, doctor_id) -> DoctorDashboa
 	completed_res = await session.execute(completed_stmt)
 	completed_cases = completed_res.scalar() or 0
 
-	total_stmt = select(func.count()).select_from(MedicalCase).where(MedicalCase.doctor_id == doctor_id)
+	total_stmt = (
+		select(func.count())
+		.select_from(MedicalCase)
+		.where(MedicalCase.doctor_id == doctor_id)
+	)
 	total_res = await session.execute(total_stmt)
 	total_cases = total_res.scalar() or 0
 
@@ -102,8 +106,9 @@ async def get_doctor_dashboard(
 	if verification is None or verification.status != DoctorVerificationStatus.APPROVED:
 		raise ForbiddenError("Access restricted. Doctor verification must be approved.")
 
+	was_on_duty = current_user.is_on_duty
 	is_on_duty, expires_at, remaining_seconds = _compute_duty_info(current_user)
-	if not is_on_duty and current_user.is_on_duty:
+	if was_on_duty and not is_on_duty:
 		await session.commit()
 
 	stats = await _get_doctor_statistics(session, current_user.id)
@@ -151,7 +156,7 @@ async def get_doctor_dashboard(
 	status_code=status.HTTP_200_OK,
 )
 async def get_doctor_dashboard_statistics(
-	current_user: DoctorUser,
+	current_user: ApprovedDoctor,
 	session: DBSession,
 ) -> SuccessResponse[DoctorDashboardStatisticsResponse]:
 	"""Return key statistics about doctor's activity and caseload (Pending Reviews, Accepted Cases, Completed Cases, Earnings)."""
@@ -166,7 +171,7 @@ async def get_doctor_dashboard_statistics(
 )
 async def update_doctor_duty_status(
 	payload: DoctorDutyStatusRequest,
-	current_user: DoctorUser,
+	current_user: ApprovedDoctor,
 	session: DBSession,
 ) -> SuccessResponse[DoctorDutyStatusResponse]:
 	"""Update doctor duty status.
